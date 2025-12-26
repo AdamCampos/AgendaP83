@@ -1,4 +1,4 @@
-# AgandaP83
+# AgendaP83
 
 AgendaP83 é um projeto de agenda corporativa para acompanhamento de **funcionários**, seus **estados de trabalho/ausência** e **períodos** desses estados, com visualização em **linha do tempo** (timeline) no front-end.
 
