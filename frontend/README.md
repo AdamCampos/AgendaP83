@@ -1,16 +1,90 @@
-# React + Vite
+# AgendaP83
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Projeto organizado em duas pastas na raiz:
 
-Currently, two official plugins are available:
+- `backend/` — API Node.js (Express) conectando ao SQL Server
+- `frontend/` — Vite + React
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Este README documenta **apenas o backend**.
 
-## React Compiler
+---
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+## Backend
 
-## Expanding the ESLint configuration
+Caminho do projeto:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+`AgendaP83/backend`
+
+---
+
+## Arquivos principais
+
+### server.js
+
+- Inicializa o Express
+- Habilita CORS e JSON
+- Monta todas as rotas em `/api`
+- Serve arquivos estáticos da pasta `public`
+- Implementa fallback SPA quando o frontend estiver buildado
+
+---
+
+### routes.js
+
+Arquivo responsável por **todas as rotas da API**.
+
+Principais grupos:
+
+- **Health**
+  - `GET /api/health`
+
+- **Meta (SQL Server)**
+  - `GET /api/meta/tabelas`
+  - `GET /api/meta/colunas`
+  - `GET /api/meta/top`
+  - `GET /api/meta/contagem`
+
+- **Funcionários**
+  - `GET /api/funcionarios`
+    - Filtros: `q`, `ativos`, `top`
+
+- **Legenda**
+  - `GET /api/legenda`
+    - Filtro opcional: `tipo`
+
+- **Calendário**
+  - `GET /api/calendario`
+    - Parâmetros: `inicio`, `fim`
+
+- **Agenda**
+  - `GET /api/agenda/dia`
+  - `GET /api/agenda/dia/chaves`
+  - `GET /api/agenda/periodo` (atualmente vazio)
+  - `GET /api/agenda` (endpoint agregado)
+
+---
+
+### db.js
+
+Responsável pela conexão com o SQL Server usando `mssql`.
+
+Características:
+
+- Pool de conexões reutilizável
+- Configuração via variáveis de ambiente
+- Falha imediata se variáveis obrigatórias não existirem
+
+---
+
+## Variáveis de ambiente
+
+Arquivo `.env`:
+
+```env
+PORT=3001
+
+DB_SERVER=SERVIDOR_SQL
+DB_DATABASE=BASE_DADOS
+DB_USER=USUARIO
+DB_PASSWORD=SENHA
+DB_PORT=1433
