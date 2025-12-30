@@ -8,10 +8,11 @@ export default memo(function EmployeeList({
   toggleSelectKey,
   somenteSelecionados,
   setSomenteSelecionados,
-  ativos,
-  setAtivos,
   selectAll,
   clearSelection,
+  onRefreshEmployees,
+  onLoadAgenda,
+  onRepor,
 }) {
   return (
     <aside className="sidebar">
@@ -22,7 +23,7 @@ export default memo(function EmployeeList({
         </div>
       </div>
 
-      {/* ✅ BUSCA NA LATERAL */}
+      {/* BUSCA */}
       <div className="sidebar-search">
         <label>Buscar (nome / chave / matrícula / função)</label>
         <input
@@ -32,10 +33,25 @@ export default memo(function EmployeeList({
         />
       </div>
 
+      {/* AÇÕES NA LATERAL */}
       <div className="sidebar-actions">
-        <button className="btn btn-secondary" onClick={() => setAtivos((v) => !v)}>
-          {ativos ? "Somente ativos ✅" : "Incluindo inativos"}
+        <button
+          className="btn btn-secondary"
+          onClick={() => onRefreshEmployees?.()}
+        >
+          Atualizar funcionários
         </button>
+
+        <button className="btn btn-secondary" onClick={() => onLoadAgenda?.()}>
+          Carregar agenda
+        </button>
+
+        <button className="btn btn-secondary" onClick={() => onRepor?.()}>
+          Repor
+        </button>
+      </div>
+
+      <div className="sidebar-actions">
         <button className="btn btn-secondary" onClick={selectAll}>
           Selecionar todos
         </button>
@@ -61,14 +77,21 @@ export default memo(function EmployeeList({
           const nome = String(f.Nome ?? "").trim();
           const mat = String(f.Matricula ?? "").trim();
           const func = String(f.Funcao ?? "").trim();
-          const checked = selectedKeys.has(k);
+          const checked = k ? selectedKeys.has(k) : false;
 
           return (
-            <div className="func-item" key={k}>
-              <input type="checkbox" checked={checked} onChange={() => toggleSelectKey(k)} />
+            <div className="func-item" key={k || `${nome}-${mat}-${func}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!k}
+                onChange={() => k && toggleSelectKey(k)}
+              />
+
               <div className="func-meta">
                 <div className="func-name">
-                  {nome || "(sem nome)"} {k ? <span className="func-chip">{k}</span> : null}
+                  {nome || "(sem nome)"}{" "}
+                  {k ? <span className="func-chip">{k}</span> : null}
                 </div>
                 <div className="func-sub">
                   {mat ? `Matrícula: ${mat}` : "—"} {func ? `• ${func}` : ""}
