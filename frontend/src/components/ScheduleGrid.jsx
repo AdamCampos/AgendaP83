@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -13,6 +13,8 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import "../Grid.css";
+
 
 const GridHeader = memo(function GridHeader({ headerInfo }) {
   return (
@@ -33,7 +35,15 @@ const GridHeader = memo(function GridHeader({ headerInfo }) {
 
       <tr>
         {headerInfo.days.map((d) => (
-          <th key={d.iso} className={`day-header ${d.isWeekend ? "weekend" : ""}`} title={d.iso}>
+          <th
+            key={d.iso}
+            className={[
+              "day-header",
+              d.isWeekend ? "weekend" : "",
+              d.isMonthStart ? "month-start" : "",
+            ].filter(Boolean).join(" ")}
+            title={d.iso}
+          >
             {d.day}
           </th>
         ))}
@@ -42,11 +52,23 @@ const GridHeader = memo(function GridHeader({ headerInfo }) {
   );
 });
 
-const DayCell = memo(function DayCell({ cellKey, iso, isWeekend, codigo, isDeleted, title, onToggleDelete }) {
+const DayCell = memo(function DayCell({
+  cellKey,
+  iso,
+  isWeekend,
+  isMonthStart,
+  codigo,
+  isDeleted,
+  title,
+  onToggleDelete,
+}) {
+  const hasCode = !!codigo;
+
   const cls = [
     "day",
     isWeekend ? "weekend" : "",
-    !codigo ? "empty" : `code code-${codigo}`,
+    isMonthStart ? "month-start" : "",
+    !hasCode ? "empty" : `code code-${codigo}`,
     isDeleted ? "deleted" : "",
   ].filter(Boolean).join(" ");
 
@@ -59,37 +81,44 @@ const DayCell = memo(function DayCell({ cellKey, iso, isWeekend, codigo, isDelet
       }}
       data-iso={iso}
     >
-      {codigo ? codigo : "·"}
+      {hasCode ? codigo : "·"}
     </td>
   );
 });
 
 function SortableRow({ id, children }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.85 : 1,
-  };
-
-  return (
-    <tr ref={setNodeRef} style={style} data-dragging={isDragging ? "1" : "0"}>
-      <td className="sticky-left col-funcao drag-handle-cell">
-        <span className="drag-handle" title="Arraste para reordenar" {...attributes} {...listeners}>
-          ⠿
-        </span>
-        <span>{children[0]}</span>
-      </td>
-      <td className="sticky-left2 col-matricula">{children[1]}</td>
-      <td className="sticky-left3 col-nome">{children[2]}</td>
-      <td className="sticky-left4 col-chave">{children[3]}</td>
-      <td className="sticky-left5 col-quant">{children[4]}</td>
-      {children.slice(5)}
-    </tr>
-  );
-}
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+      useSortable({ id });
+  
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.85 : 1,
+    };
+  
+    return (
+      <tr ref={setNodeRef} style={style} data-dragging={isDragging ? "1" : "0"}>
+        {/* ✅ td sticky SEM display:flex */}
+        <td className="sticky-left col-funcao">
+          {/* ✅ flex fica aqui dentro */}
+          <div className="drag-handle-cell">
+            <span className="drag-handle" title="Arraste para reordenar" {...attributes} {...listeners}>
+              ⠿
+            </span>
+            <span className="funcao-text">{children[0]}</span>
+          </div>
+        </td>
+  
+        <td className="sticky-left2 col-matricula">{children[1]}</td>
+        <td className="sticky-left3 col-nome">{children[2]}</td>
+        <td className="sticky-left4 col-chave">{children[3]}</td>
+        <td className="sticky-left5 col-quant">{children[4]}</td>
+  
+        {children.slice(5)}
+      </tr>
+    );
+  }
+  
 
 export default function ScheduleGrid({
   visibleKeys,
@@ -98,7 +127,6 @@ export default function ScheduleGrid({
   agendaMap,
   deletedCells,
   toggleCellDeleted,
-  rowOrder,
   setRowOrder,
 }) {
   const sensors = useSensors(
@@ -120,57 +148,65 @@ export default function ScheduleGrid({
 
   return (
     <div className="grid-wrap">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEndRow}>
-        <SortableContext items={visibleKeys} strategy={verticalListSortingStrategy}>
-          <table className="grid">
-            <GridHeader headerInfo={headerInfo} />
-
-            <tbody>
-              {visibleKeys.map((k) => {
-                const f = funcionariosByKey.get(k) || {};
-                const funcao = String(f.Funcao ?? "").trim() || "—";
-                const mat = String(f.Matricula ?? "").trim() || "—";
-                const nome = String(f.Nome ?? "").trim() || "—";
-                const quant = String(f.Quant ?? "").trim() || "—";
-
-                return (
-                  <SortableRow key={k} id={k}>
-                    {funcao}
-                    {mat}
-                    {nome}
-                    {k}
-                    {quant}
-
-                    {headerInfo.days.map((d) => {
-                      const cellKey = `${k}|${d.iso}`;
-                      const row = agendaMap.get(cellKey);
-                      const codigo = String(row?.Codigo ?? "").trim();
-                      const isDeleted = deletedCells.has(cellKey);
-
-                      const title = row
-                        ? `${k} • ${d.iso}\n${codigo}\nFonte: ${row.Fonte ?? ""}\nObs: ${row.Observacao ?? ""}`
-                        : `${k} • ${d.iso}`;
-
-                      return (
-                        <DayCell
-                          key={cellKey}
-                          cellKey={cellKey}
-                          iso={d.iso}
-                          isWeekend={d.isWeekend}
-                          codigo={codigo}
-                          isDeleted={isDeleted}
-                          title={title}
-                          onToggleDelete={toggleCellDeleted}
-                        />
-                      );
-                    })}
-                  </SortableRow>
-                );
-              })}
-            </tbody>
-          </table>
-        </SortableContext>
-      </DndContext>
+      <div className="grid-inner">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={onDragEndRow}
+        >
+          <SortableContext items={visibleKeys} strategy={verticalListSortingStrategy}>
+            <table className="grid">
+              <GridHeader headerInfo={headerInfo} />
+  
+              <tbody>
+                {visibleKeys.map((k) => {
+                  const f = funcionariosByKey.get(k) || {};
+                  const funcao = String(f.Funcao ?? "").trim() || "—";
+                  const mat = String(f.Matricula ?? "").trim() || "—";
+                  const nome = String(f.Nome ?? "").trim() || "—";
+                  const quant = String(f.Quant ?? "").trim() || "—";
+  
+                  return (
+                    <SortableRow key={k} id={k}>
+                      {funcao}
+                      {mat}
+                      {nome}
+                      {k}
+                      {quant}
+  
+                      {headerInfo.days.map((d) => {
+                        const cellKey = `${k}|${d.iso}`;
+                        const row = agendaMap.get(cellKey);
+                        const codigo = String(row?.Codigo ?? "").trim();
+                        const isDeleted = deletedCells.has(cellKey);
+  
+                        const title = row
+                          ? `${k} • ${d.iso}\n${codigo}\nFonte: ${row.Fonte ?? ""}\nObs: ${row.Observacao ?? ""}`
+                          : `${k} • ${d.iso}`;
+  
+                        return (
+                          <DayCell
+                            key={cellKey}
+                            cellKey={cellKey}
+                            iso={d.iso}
+                            isWeekend={d.isWeekend}
+                            isMonthStart={!!d.isMonthStart}
+                            codigo={codigo}
+                            isDeleted={isDeleted}
+                            title={title}
+                            onToggleDelete={toggleCellDeleted}
+                          />
+                        );
+                      })}
+                    </SortableRow>
+                  );
+                })}
+              </tbody>
+            </table>
+          </SortableContext>
+        </DndContext>
+      </div>
     </div>
   );
+  
 }

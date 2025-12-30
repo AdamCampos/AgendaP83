@@ -1,6 +1,8 @@
 import { memo } from "react";
 
 export default memo(function EmployeeList({
+  q,
+  setQ,
   funcionarios,
   selectedKeys,
   toggleSelectKey,
@@ -18,6 +20,16 @@ export default memo(function EmployeeList({
         <div className="small">
           Selecionados: <b>{selectedKeys.size}</b>
         </div>
+      </div>
+
+      {/* ✅ BUSCA NA LATERAL */}
+      <div className="sidebar-search">
+        <label>Buscar (nome / chave / matrícula / função)</label>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Ex: JOAO ou 0A1B ou 12345 ou TM AUTOMAÇÃO"
+        />
       </div>
 
       <div className="sidebar-actions">

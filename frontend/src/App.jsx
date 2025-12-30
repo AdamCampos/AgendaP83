@@ -4,6 +4,10 @@ import ScheduleGrid from "./components/ScheduleGrid.jsx";
 import { apiGet } from "./lib/api.js";
 import { useDebounce } from "./hooks/useDebounce.js";
 
+import "./App.css";
+import "./Grid.css";
+
+
 /* ===== datas ===== */
 function toIsoDate(d) {
   const yyyy = d.getFullYear();
@@ -222,27 +226,45 @@ export default function App() {
   const headerInfo = useMemo(() => {
     const days = calendar.map((iso) => {
       const d = new Date(iso + "T00:00:00");
+  
       const day = String(d.getDate()).padStart(2, "0");
       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-
+  
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const monthLabel = d
         .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" })
         .replace(".", "");
-
-      return { iso, day, isWeekend, monthKey, monthLabel };
+  
+      // ✅ NOVO: marca início de mês (para borda vertical)
+      const isMonthStart = d.getDate() === 1;
+  
+      return {
+        iso,
+        day,
+        isWeekend,
+        monthKey,
+        monthLabel,
+        isMonthStart,
+      };
     });
-
+  
     const groups = [];
     for (const item of days) {
       const last = groups[groups.length - 1];
       if (!last || last.monthKey !== item.monthKey) {
-        groups.push({ monthKey: item.monthKey, monthLabel: item.monthLabel, count: 1 });
-      } else last.count++;
+        groups.push({
+          monthKey: item.monthKey,
+          monthLabel: item.monthLabel,
+          count: 1,
+        });
+      } else {
+        last.count++;
+      }
     }
-
+  
     return { days, groups };
   }, [calendar]);
+  
 
   function toggleSelectKey(k) {
     setSelectedKeys((prev) => {
@@ -280,14 +302,6 @@ export default function App() {
         </div>
 
         <div className="controls">
-          <div className="control">
-            <label>Buscar (nome / chave / matrícula)</label>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Ex: JOAO ou 0A1B ou 12345"
-            />
-          </div>
 
           <div className="control">
             <label>Início</label>
@@ -311,6 +325,8 @@ export default function App() {
 
       <div className="layout">
         <EmployeeList
+          q={q}
+          setQ={setQ}
           funcionarios={funcionarios}
           selectedKeys={selectedKeys}
           toggleSelectKey={toggleSelectKey}
@@ -321,6 +337,7 @@ export default function App() {
           selectAll={selectAll}
           clearSelection={clearSelection}
         />
+
 
         <main className="content">
           <div className="content-header">

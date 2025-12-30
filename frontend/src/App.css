@@ -1,3 +1,5 @@
+/* App.css — layout + sidebar + topbar + legend (NÃO contém estilos do grid) */
+
 :root{
   --grid-border:#c9cdd3;
   --text:#111827;
@@ -5,7 +7,6 @@
   --bg:#ffffff;
   --head:#f3f4f6;
   --head2:#eef2ff;
-  --zebra:#fafafa;
   --weekend:#f8fafc;
 
   --surface:#ffffff;
@@ -18,10 +19,20 @@
   --w-chave: 70px;
   --w-quant: 60px;
 
+  /* sombra do “freeze pane” (usada no Grid.css) */
   --sticky-shadow: 0 0 0 1px var(--grid-border), 8px 0 14px rgba(0,0,0,.06);
+
+  /* separadores de mês (Grid.css) */
+  --month-sep:#9ca3af;
+  --month-sep-w:2px;
+
+  /* camadas da UI (importante!) */
+  --z-ui: 500;   /* topbar/legend sempre acima */
+  --z-grid: 10;  /* área do grid abaixo da UI */
 }
 
 *{ box-sizing:border-box; }
+html, body, #root { height:100%; }
 
 body{
   margin:0;
@@ -30,7 +41,7 @@ body{
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ===== Layout (topbar + sidebar + content) ===== */
+/* ===== Layout ===== */
 .topbar{
   display:flex;
   align-items:flex-end;
@@ -38,6 +49,10 @@ body{
   padding:12px 14px;
   border-bottom:1px solid var(--line);
   background:#fff;
+
+  /* ✅ sempre acima do grid */
+  position: relative;
+  z-index: var(--z-ui);
 }
 
 .brand .title{
@@ -102,23 +117,27 @@ body{
   height: calc(100vh - 64px);
 }
 
+/* ===== Sidebar ===== */
 .sidebar{
   border-right:1px solid var(--line);
   background:#fff;
   overflow:auto;
+
+  scrollbar-gutter: stable both-edges;
+  padding-right: 8px;
 }
+
 .sidebar-header{
   padding:12px 14px 8px 14px;
   border-bottom:1px solid var(--line);
 }
-.sidebar-header .h{
-  font-weight:800;
-}
+.sidebar-header .h{ font-weight:800; }
 .sidebar-header .small{
   font-size:12px;
   color:var(--muted);
   margin-top:4px;
 }
+
 .sidebar-actions{
   padding:10px 14px;
   display:flex;
@@ -133,6 +152,35 @@ body{
   display:flex;
   gap:8px;
   align-items:center;
+}
+
+/* ===== Busca lateral (Excel-like) ===== */
+.sidebar-search{
+  padding:10px 14px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.sidebar-search label{
+  font-size:11px;
+  color:var(--muted);
+  font-weight:700;
+  letter-spacing:.2px;
+}
+.sidebar-search input{
+  height:26px;
+  border:1px solid var(--grid-border);
+  border-radius:2px;
+  padding:0 8px;
+  background:#fff;
+  color:var(--text);
+  font-size:12px;
+  outline:none;
+}
+.sidebar-search input:focus{
+  border-color:#2563eb;
+  box-shadow: 0 0 0 2px rgba(37,99,235,.15);
 }
 
 .func-list{
@@ -169,12 +217,18 @@ body{
   color:var(--muted);
 }
 
+/* ===== Content ===== */
 .content{
   background:#fff;
   overflow:hidden;
   display:flex;
   flex-direction:column;
+
+  /* ✅ cria contexto para o grid não “subir” por cima da legenda */
+  position: relative;
+  z-index: var(--z-grid);
 }
+
 .content-header{
   padding:10px 14px;
   border-bottom:1px solid var(--line);
@@ -182,157 +236,53 @@ body{
   align-items:baseline;
   justify-content:space-between;
   gap:10px;
+
+  /* ✅ sempre acima do grid */
+  position: relative;
+  z-index: var(--z-ui);
+  background:#fff;
 }
-.content-header .h{
-  font-weight:900;
-}
+.content-header .h{ font-weight:900; }
 .content-header .status{
   font-size:12px;
   color:var(--muted);
 }
 
+/* ===== Legenda (UI, acima do grid SEMPRE) ===== */
 .legend{
-  padding:8px 14px;
+  padding:6px 14px;
   border-bottom:1px solid var(--line);
   display:flex;
-  gap:8px;
+  gap:6px;
   align-items:center;
   flex-wrap:wrap;
   font-size:12px;
+  background:#fff;
+
+  /* ✅ esta é a correção do seu print: legenda acima do freeze */
+  position: relative;
+  z-index: var(--z-ui);
 }
+
+.legend span:first-child{
+  font-size:12px;
+  font-weight:800;
+  color:#111827;
+  margin-right:4px;
+}
+
 .tag{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width:36px;
-  height:20px;
+  width: 34px;
+  height: 22px;
   border:1px solid var(--grid-border);
-  border-radius:6px;
-  padding:0 6px;
-  font-weight:800;
-}
-
-/* ===== Grid Excel-like ===== */
-.grid-wrap{
-  border-top:0;
-  overflow:auto;
-  height: 100%;
-  background:#fff;
-}
-
-table.grid{
-  border-collapse:collapse;
-  table-layout: fixed;
-  width:max-content;
-  min-width: 1200px;
-  font-size:12px;
-}
-
-.grid th, .grid td{
-  border:1px solid var(--grid-border);
+  border-radius:0;
   padding:0;
-  height:22px;
-  text-align:center;
-  vertical-align:middle;
-  white-space:nowrap;
-}
-
-.grid thead th{
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: var(--head);
-  font-weight:800;
-}
-
-.grid thead tr:nth-child(2) th{
-  top: 22px;
-  background: var(--head2);
-  z-index: 49;
-  font-weight:700;
-}
-
-.grid tbody tr:nth-child(even) td{
-  background: var(--zebra);
-}
-
-/* larguras */
-.col-funcao{ width:var(--w-funcao); text-align:left; padding-left:8px; }
-.col-matricula{ width:var(--w-matricula); }
-.col-nome{ width:var(--w-nome); text-align:left; padding-left:8px; }
-.col-chave{ width:var(--w-chave); font-weight:900; }
-.col-quant{ width:var(--w-quant); }
-
-.day-header{ width:24px; font-weight:900; }
-.day{ width:24px; font-weight:900; }
-.day.empty{ color:#9ca3af; font-weight:500; }
-.day.weekend, .day-header.weekend{ background: var(--weekend) !important; }
-
-/* Sticky columns (congelar painel) */
-.sticky-left{
-  position:sticky; left:0; z-index:60; background:#fff;
-  box-shadow: var(--sticky-shadow);
-}
-.sticky-left2{
-  position:sticky; left:var(--w-funcao); z-index:60; background:#fff;
-  box-shadow: var(--sticky-shadow);
-}
-.sticky-left3{
-  position:sticky; left:calc(var(--w-funcao) + var(--w-matricula)); z-index:60; background:#fff;
-  box-shadow: var(--sticky-shadow);
-}
-.sticky-left4{
-  position:sticky; left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome)); z-index:60; background:#fff;
-  box-shadow: var(--sticky-shadow);
-}
-.sticky-left5{
-  position:sticky; left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome) + var(--w-chave)); z-index:60; background:#fff;
-  box-shadow: var(--sticky-shadow);
-}
-
-/* Cabeçalho de mês */
-.month-band{
-  background:#e5e7eb !important;
   font-weight:900;
-  text-transform:lowercase;
-  letter-spacing:.3px;
-}
-
-/* Drag handle */
-.drag-handle-cell{ display:flex; align-items:center; gap:8px; }
-.drag-handle{
-  display:inline-flex;
-  width:20px;
-  height:20px;
-  align-items:center;
-  justify-content:center;
-  border:1px solid var(--grid-border);
-  border-radius:6px;
+  font-size:12px;
+  line-height:1;
   background:#fff;
-  cursor:grab;
   user-select:none;
-}
-.drag-handle:active{ cursor:grabbing; }
-tr[data-dragging="1"] td{ box-shadow: 0 8px 20px rgba(17,24,39,0.12); }
-
-/* “Exclusão” local (Alt+Clique) */
-.day.deleted{
-  opacity:.25;
-  text-decoration: line-through;
-  filter: grayscale(.3);
-}
-
-/* ===== Cores por código (ajuste livre) ===== */
-.code-FS{ background:#a3e635 !important; }
-.code-F{ background:#fde047 !important; }
-.code-HO{ background:#38bdf8 !important; }
-.code-B{ background:#22c55e !important; }
-.code-YNT{ background:#f59e0b !important; }
-.code-V{ background:#e5e7eb !important; }
-.code-EM{ background:#c7d2fe !important; }
-.code-ANG{ background:#fca5a5 !important; }
-
-/* Para tags de legenda reutilizarem as mesmas cores */
-.tag.code-FS,.tag.code-F,.tag.code-HO,.tag.code-B,.tag.code-YNT,.tag.code-V,.tag.code-EM,.tag.code-ANG{
-  border-color: var(--grid-border);
 }
