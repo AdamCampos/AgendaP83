@@ -1,0 +1,171 @@
+/* Base para códigos (as cores reais vêm do <style> dinâmico no App.jsx) */
+.code{
+    font-weight:800;
+  }
+  
+  /* ===== Popup LegendStyleEditor ===== */
+  .lse-backdrop{
+    position:fixed;
+    inset:0;
+    background: rgba(0,0,0,.35);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index: 9999;
+  }
+  
+  .lse-modal{
+    width:min(980px, 96vw);
+    max-height: min(86vh, 860px);
+    background:#fff;
+    border-radius:14px;
+    border:1px solid #e5e7eb;
+    box-shadow: 0 18px 50px rgba(0,0,0,.25);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  
+  .lse-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:12px 14px;
+    border-bottom:1px solid #e5e7eb;
+  }
+  
+  .lse-title{ font-weight:900; }
+  
+  .lse-close{
+    width:30px;
+    height:30px;
+    border-radius:10px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    cursor:pointer;
+    font-size:18px;
+    line-height:0;
+    font-weight:900;
+  }
+  .lse-close:hover{ background:#f3f4f6; }
+  
+  .lse-body{
+    display:grid;
+    grid-template-columns: 220px 1fr;
+    gap:0;
+    overflow:auto;
+  }
+  
+  .lse-left{
+    border-right:1px solid #e5e7eb;
+    padding:12px;
+  }
+  
+  .lse-right{
+    padding:12px;
+  }
+  
+  .lse-section-title{
+    font-weight:900;
+    margin-bottom:8px;
+  }
+  
+  .lse-codelist{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  
+  .lse-codebtn{
+    border:1px solid #c9cdd3;
+    background:#fff;
+    border-radius:8px;
+    padding:6px 8px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .lse-codebtn:hover{ background:#f3f4f6; }
+  .lse-codebtn.active{
+    outline:2px solid rgba(37,99,235,.35);
+  }
+  
+  .lse-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  
+  .lse-preview{
+    width: 64px;
+    height: 32px;
+    border:1px solid #c9cdd3;
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:900;
+  }
+  
+  .lse-warn{
+    background:#fff7ed;
+    border:1px solid #fdba74;
+    color:#9a3412;
+    padding:10px;
+    border-radius:12px;
+    margin-bottom:10px;
+    font-size:12px;
+  }
+  
+  .lse-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
+  }
+  
+  .lse-field{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    font-size:12px;
+    color:#111827;
+  }
+  .lse-field span{ color:#6b7280; font-weight:700; }
+  
+  .lse-field select{
+    height:30px;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:0 10px;
+  }
+  .lse-field input[type="color"]{
+    height:30px;
+    width:100%;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    background:#fff;
+    padding:2px 6px;
+  }
+  
+  .lse-check{
+    flex-direction:row;
+    align-items:center;
+    gap:10px;
+    margin-top:18px;
+  }
+  
+  .lse-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+  
+  .lse-foot{
+    border-top:1px solid #e5e7eb;
+    padding:10px 14px;
+    font-size:12px;
+    color:#6b7280;
+  }
+  

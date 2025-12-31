@@ -1,0 +1,76 @@
+/* Células e legenda (sem cores fixas — cores vêm do CSS dinâmico + CodeStyles.css) */
+
+.legend{
+    padding:6px 14px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    gap:6px;
+    align-items:center;
+    flex-wrap:wrap;
+    font-size:12px;
+    background:#fff;
+  }
+  
+  .legend span:first-child{
+    font-size:12px;
+    font-weight:800;
+    color:#111827;
+    margin-right:4px;
+  }
+  
+  .legend-muted{ color: var(--muted); }
+  
+  .legend-tools{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    margin-left:10px;
+  }
+  
+  .legend-warn{
+    color:#b45309;
+    font-size:12px;
+  }
+  
+  .tag{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 34px;
+    height: 22px;
+    border:1px solid var(--grid-border);
+    border-radius:0;
+    padding:0;
+    font-weight:900;
+    font-size:12px;
+    line-height:1;
+    background:#fff;
+    user-select:none;
+  
+    cursor:pointer;
+  }
+  
+  .tag:hover{
+    outline: 2px solid rgba(37,99,235,.25);
+    outline-offset: 1px;
+  }
+  
+  /* Hover Excel-like na grid: destaca célula */
+  .grid td.day:hover{
+    outline: 2px solid rgba(37,99,235,.35);
+    outline-offset: -2px;
+    z-index: 5;
+  }
+  
+  /* Hover na linha (leve) */
+  .grid tbody tr:hover td{
+    background-image: linear-gradient(rgba(0,0,0,0.03), rgba(0,0,0,0.03));
+  }
+  
+  /* Botões pequenos na legenda */
+  .btn.btn-sm{
+    height:24px;
+    padding:0 10px;
+    font-size:12px;
+  }
+  

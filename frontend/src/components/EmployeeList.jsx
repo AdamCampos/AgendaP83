@@ -23,7 +23,6 @@ export default memo(function EmployeeList({
         </div>
       </div>
 
-      {/* BUSCA */}
       <div className="sidebar-search">
         <label>Buscar (nome / chave / matrícula / função)</label>
         <input
@@ -33,30 +32,42 @@ export default memo(function EmployeeList({
         />
       </div>
 
-      {/* AÇÕES NA LATERAL */}
       <div className="sidebar-actions">
         <button
           className="btn btn-secondary"
           onClick={() => onRefreshEmployees?.()}
+          type="button"
         >
           Atualizar funcionários
         </button>
 
-        <button className="btn btn-secondary" onClick={() => onLoadAgenda?.()}>
+        <button
+          className="btn btn-secondary"
+          onClick={() => onLoadAgenda?.()}
+          type="button"
+        >
           Carregar agenda
         </button>
 
-        <button className="btn btn-secondary" onClick={() => onRepor?.()}>
-          Repor
+        <button
+          className="btn btn-secondary"
+          onClick={() => onRepor?.()}
+          type="button"
+        >
+          Repor (limpa grid)
         </button>
       </div>
 
       <div className="sidebar-actions">
-        <button className="btn btn-secondary" onClick={selectAll}>
+        <button className="btn btn-secondary" onClick={selectAll} type="button">
           Selecionar todos
         </button>
-        <button className="btn btn-secondary" onClick={clearSelection}>
-          Limpar
+        <button
+          className="btn btn-secondary"
+          onClick={clearSelection}
+          type="button"
+        >
+          Limpar seleção
         </button>
       </div>
 
@@ -87,7 +98,6 @@ export default memo(function EmployeeList({
                 disabled={!k}
                 onChange={() => k && toggleSelectKey(k)}
               />
-
               <div className="func-meta">
                 <div className="func-name">
                   {nome || "(sem nome)"}{" "}

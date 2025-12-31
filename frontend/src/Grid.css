@@ -1,23 +1,14 @@
-/* Grid.css — somente grid (scroll, sticky, meses, códigos, weekend, drag)
-   FIX: coluna Função (sticky-left) não “anda” no scroll (bug do sticky + flex no TD)
-   FIX: separação de camadas + month band + freeze pane
-*/
+/* Grid.css — grid (scroll, sticky, meses, drag, etc.) */
 
-/* ===== Grid wrapper ===== */
+/* wrapper scroll */
 .grid-wrap{
     overflow:auto;
     height:100%;
     background:#fff;
-  
     scrollbar-gutter: stable both-edges;
-  
-    /* cria stacking context próprio */
-    position: relative;
-    z-index: 0;
-    isolation: isolate;
   }
   
-  /* “gutter real” para scrollbar overlay não cobrir células */
+  /* “gutter real” */
   .grid-inner{
     display:inline-block;
     padding-right: 18px;
@@ -30,11 +21,9 @@
     width:max-content;
     min-width: 1200px;
     font-size:12px;
-  
-    position: relative;
-    z-index: 0;
   }
   
+  /* células */
   .grid th, .grid td{
     border:1px solid var(--grid-border);
     padding:0;
@@ -44,12 +33,9 @@
     white-space:nowrap;
     font-size:12px;
     line-height:1;
-  
-    /* ajuda sticky em alguns cenários */
-    background-clip: padding-box;
   }
   
-  /* ===== Cabeçalhos sticky ===== */
+  /* headers sticky (top) */
   .grid thead th{
     position: sticky;
     top: 0;
@@ -59,14 +45,13 @@
   }
   
   .grid thead tr:nth-child(2) th{
-    position: sticky;
     top: 22px;
     background: var(--head2);
     z-index: 29;
     font-weight:700;
   }
   
-  /* Larguras */
+  /* larguras */
   .col-funcao{ width:var(--w-funcao); text-align:left; padding-left:8px; }
   .col-matricula{ width:var(--w-matricula); }
   .col-nome{ width:var(--w-nome); text-align:left; padding-left:8px; }
@@ -77,54 +62,53 @@
   .day{ width:24px; font-weight:900; }
   .day.empty{ color:#9ca3af; font-weight:500; }
   
-  /* Weekend não sobrepõe códigos */
+  /* weekend só no header e célula vazia */
   .day-header.weekend{ background: var(--weekend) !important; }
   .day.weekend.empty{ background: var(--weekend) !important; }
   
-  /* ===== Sticky columns (congelar painel) =====
-     IMPORTANTE: o TD sticky NÃO pode ter display:flex (bug).
-     O flex fica em um wrapper interno (div.drag-handle-cell).
-  */
+  /* ===========================
+     ✅ CONGELAR COLUNAS (FIX)
+     =========================== */
+  
+  /* offsets das colunas sticky */
+  .sticky-left  { left: 0; }
+  .sticky-left2 { left: var(--w-funcao); }
+  .sticky-left3 { left: calc(var(--w-funcao) + var(--w-matricula)); }
+  .sticky-left4 { left: calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome)); }
+  .sticky-left5 { left: calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome) + var(--w-chave)); }
+  
+  /* ✅ sticky no BODY: precisa de background + z-index alto
+     senão o conteúdo rolável passa por cima (seu problema atual) */
   .grid tbody .sticky-left,
   .grid tbody .sticky-left2,
   .grid tbody .sticky-left3,
   .grid tbody .sticky-left4,
   .grid tbody .sticky-left5{
     position: sticky;
-    background:#fff;
-    z-index: 20;
-    box-shadow: none;
-  
-    /* garante que a célula pinte por cima do conteúdo rolável */
-    background-clip: padding-box;
+    z-index: 60;              /* alto para cobrir células roláveis */
+    background: #fff;         /* OBRIGATÓRIO para não “vazar” conteúdo atrás */
   }
   
-  /* Cabeçalho (canto superior esquerdo) */
+  /* ✅ sticky no THEAD: acima do body */
   .grid thead .sticky-left,
   .grid thead .sticky-left2,
   .grid thead .sticky-left3,
   .grid thead .sticky-left4,
   .grid thead .sticky-left5{
     position: sticky;
-    background: var(--head);
-    z-index: 40;
-    box-shadow: none;
-  
-    background-clip: padding-box;
+    z-index: 80;              /* acima do body */
+    background: var(--head);  /* mantém aparência do header */
   }
   
-  /* offsets */
-  .sticky-left{ left:0; }
-  .sticky-left2{ left:var(--w-funcao); }
-  .sticky-left3{ left:calc(var(--w-funcao) + var(--w-matricula)); }
-  .sticky-left4{ left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome)); }
-  .sticky-left5{ left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome) + var(--w-chave)); }
+  /* ✅ sombra/linha na última sticky (efeito Excel e evita sensação de “sobrepor”) */
+  .grid tbody .sticky-left5,
+  .grid thead .sticky-left5{
+    box-shadow: var(--sticky-shadow);
+  }
   
-  /* Freeze pane: sombra só na última coluna fixa */
-  .grid tbody .sticky-left5{ box-shadow: var(--sticky-shadow); }
-  .grid thead .sticky-left5{ box-shadow: var(--sticky-shadow); }
-  
-  /* ===== Meses ===== */
+  /* ===========================
+     Meses / separadores
+     =========================== */
   .month-band{
     background:#e5e7eb !important;
     font-weight:900;
@@ -132,11 +116,8 @@
     letter-spacing:.3px;
     border-left: var(--month-sep-w) solid var(--month-sep) !important;
     border-right: var(--month-sep-w) solid var(--month-sep) !important;
-  
-    /* acima do header normal, abaixo do canto congelado */
     z-index: 35;
   }
-  
   .day-header.month-start{
     border-left: var(--month-sep-w) solid var(--month-sep) !important;
   }
@@ -144,30 +125,8 @@
     border-left: var(--month-sep-w) solid var(--month-sep) !important;
   }
   
-  /* ===== Drag handle =====
-     ✅ NÃO aplique display:flex no TD sticky.
-     O flex deve estar em um wrapper interno dentro da célula Função.
-  */
-  .drag-handle-cell{
-    display:flex;
-    align-items:center;
-    gap:8px;
-  
-    /* como antes era padding-left no td, mantemos aqui também */
-    padding-left:8px;
-    padding-right:8px;
-  
-    /* evita overflow visual */
-    min-width: 0;
-  }
-  
-  .funcao-text{
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
+  /* drag handle */
+  .drag-handle-cell{ display:flex; align-items:center; gap:8px; }
   .drag-handle{
     display:inline-flex;
     width:20px;
@@ -179,7 +138,6 @@
     background:#fff;
     cursor:grab;
     user-select:none;
-    flex: 0 0 auto;
   }
   .drag-handle:active{ cursor:grabbing; }
   
@@ -187,30 +145,45 @@
     box-shadow: 0 8px 20px rgba(17,24,39,0.12);
   }
   
-  /* ===== Exclusão local ===== */
+  /* remover */
+  .row-key{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:0 6px;
+  }
+  .row-remove{
+    height:18px;
+    width:18px;
+    border-radius:6px;
+    border:1px solid var(--grid-border);
+    background:#fff;
+    cursor:pointer;
+    line-height:0;
+    font-size:14px;
+    font-weight:900;
+  }
+  .row-remove:hover{ background:#f3f4f6; }
+  
+  .row-main{
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  
+  /* th ordenável */
+  .th-sort{
+    cursor:pointer;
+    user-select:none;
+  }
+  .th-sort:hover{
+    background:#e9eefc;
+  }
+  
+  /* exclusão local */
   .day.deleted{
     opacity:.25;
     text-decoration: line-through;
     filter: grayscale(.3);
-  }
-  
-  /* ===== Cores (suas cores originais) ===== */
-  .code-FS{ background:#a3e635 !important; }
-  .code-F{ background:#fde047 !important; }
-  .code-HO{ background:#38bdf8 !important; }
-  .code-B{ background:#22c55e !important; }
-  .code-YNT{ background:#f59e0b !important; }
-  .code-V{ background:#e5e7eb !important; }
-  .code-EM{ background:#c7d2fe !important; }
-  .code-ANG{ background:#fca5a5 !important; }
-  .code-TR{ background:#fecaca !important; }
-  .code-NTG{ background:#fb7185 !important; color:#111827 !important; }
-  .code-SGP{ background:#fca5a5 !important; } /* ajuste conforme sua planilha */
-  .code-TUY{ background:#e5e7eb !important; }
-  
-  /* Legenda herda cor */
-  .tag.code-FS,.tag.code-F,.tag.code-HO,.tag.code-B,.tag.code-YNT,.tag.code-V,.tag.code-EM,.tag.code-ANG,
-  .tag.code-TR,.tag.code-NTG,.tag.code-SGP,.tag.code-TUY{
-    border-color: var(--grid-border);
   }
   

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import EmployeeList from "./components/EmployeeList.jsx";
 import ScheduleGrid from "./components/ScheduleGrid.jsx";
+import LegendStyleEditor from "./components/LegendStyleEditor.jsx";
 import { apiGet } from "./lib/api.js";
 import { useDebounce } from "./hooks/useDebounce.js";
 
 import "./App.css";
 import "./Grid.css";
+import "./Cells.css";
+import "./CodeStyles.css";
 
 /* ===== datas ===== */
 function toIsoDate(d) {
@@ -31,7 +34,7 @@ function isoRange(inicio, fim) {
   while (cur <= b) {
     out.push(toIsoDate(cur));
     cur.setDate(cur.getDate() + 1);
-    if (out.length > 400) break;
+    if (out.length > 800) break;
   }
   return out;
 }
@@ -130,6 +133,100 @@ function purgeSetByKeysPrefix(set, keys) {
   return out;
 }
 
+/* ===== estilos default por código (base “Excel-like” + O cinza / A carmesim) ===== */
+const DEFAULT_CODE_STYLES = {
+  // verdes
+  FS: { mode: "solid", bg1: "#92D050", bg2: "", fg: "#000000", bold: true },
+  B: { mode: "solid", bg1: "#00B050", bg2: "", fg: "#000000", bold: true },
+
+  // amarelos / laranjas
+  F: { mode: "solid", bg1: "#FFC000", bg2: "", fg: "#000000", bold: true },
+  YNT: { mode: "solid", bg1: "#FF9900", bg2: "", fg: "#000000", bold: true },
+
+  // azuis
+  HO: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
+  BT: { mode: "solid", bg1: "#00A99D", bg2: "", fg: "#000000", bold: true },
+  PY: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
+
+  // “no seu print ANG parece amarelo”
+  ANG: { mode: "solid", bg1: "#FFFF00", bg2: "", fg: "#000000", bold: true },
+
+  // rosas/vermelhos
+  SGP: { mode: "solid", bg1: "#FF4D4D", bg2: "", fg: "#000000", bold: true },
+  NTG: { mode: "solid", bg1: "#FF66CC", bg2: "", fg: "#000000", bold: true },
+  TR: { mode: "solid", bg1: "#F8CBAD", bg2: "", fg: "#000000", bold: true },
+
+  // cinzas
+  V: { mode: "solid", bg1: "#D9E1F2", bg2: "", fg: "#000000", bold: true },
+  O: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
+  OH: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
+
+  // carmesim
+  A: { mode: "solid", bg1: "#C00000", bg2: "", fg: "#FFFFFF", bold: true },
+
+  // lavandas / neutros
+  EM: { mode: "solid", bg1: "#B4C6E7", bg2: "", fg: "#000000", bold: true },
+  EVT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+
+  // outros códigos vistos na legenda (defaults neutros; calibra no popup)
+  DR3T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  DR6T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  HZH1: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  HZH2: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  HZH3: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  HZPR: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  HZUT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  PUN: {
+    mode: "gradient",
+    bg1: "#C00000",
+    bg2: "#00B0F0",
+    fg: "#FFFFFF",
+    bold: true,
+  },
+  HOE: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  IN: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  IO: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  L: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  NB: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  PT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+  TUY: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
+  "0": { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
+};
+
+function normalizeCode(code) {
+  const c = String(code ?? "").trim();
+  if (!c) return "";
+  return c;
+}
+
+function buildCodeCss(styleMap) {
+  const entries = Object.entries(styleMap || {});
+  const lines = [];
+
+  for (const [rawCode, st] of entries) {
+    const code = normalizeCode(rawCode);
+    if (!code) continue;
+
+    const mode = st?.mode === "gradient" ? "gradient" : "solid";
+    const bg1 = st?.bg1 || "#ffffff";
+    const bg2 = st?.bg2 || "#ffffff";
+    const fg = st?.fg || "#000000";
+    const bold = !!st?.bold;
+
+    const selector = `.code-${CSS.escape(code)}`;
+    const background =
+      mode === "gradient"
+        ? `linear-gradient(to bottom, ${bg1} 0%, ${bg2} 100%)`
+        : `${bg1}`;
+
+    lines.push(
+      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${bold ? 800 : 600} !important;}`
+    );
+  }
+
+  return lines.join("\n");
+}
+
 export default function App() {
   const [status, setStatus] = useState("verificando...");
   const [backendOk, setBackendOk] = useState(false);
@@ -138,33 +235,68 @@ export default function App() {
   const [inicio, setInicio] = useState(isoAddDays(today.current, -7));
   const [fim, setFim] = useState(isoAddDays(today.current, 21));
 
-  // busca da lateral
   const [q, setQ] = useState("");
   const qDebounced = useDebounce(q, 250);
 
-  // lista lateral (resultado do filtro)
+  const [somenteSelecionados, setSomenteSelecionados] = useState(true);
+
+  // lista atual do painel (resultado da busca)
   const [funcionarios, setFuncionarios] = useState([]);
 
-  // selecionados = "quem está na grid"
+  // ✅ cache global (pra não virar “—” ao mudar a busca)
+  const [funcCache, setFuncCache] = useState(() => new Map());
+
+  // seleção define quem está na grid
   const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const [gridKeys, setGridKeys] = useState(new Set());
 
-  // cache global de funcionários (para o grid nunca perder dados ao filtrar)
-  const [funcionariosCache, setFuncionariosCache] = useState(() => new Map());
-
-  // ordem global (nunca deve ser podada pela busca)
-  const [rowOrderGlobal, setRowOrderGlobal] = useState([]);
-
-  // agenda
   const [rawCalendar, setRawCalendar] = useState([]);
   const [legenda, setLegenda] = useState([]);
   const [agendaMap, setAgendaMap] = useState(new Map());
 
-  // exclusões locais e dnd
   const [deletedCells, setDeletedCells] = useState(new Set());
-  const [somenteSelecionados, setSomenteSelecionados] = useState(true);
+  const [rowOrder, setRowOrder] = useState([]);
 
-  // para detectar add/remove sem depender de “gridKeys” separado
-  const prevSelectedRef = useRef(new Set());
+  // ===== Ordenação por coluna (ciclo: off -> asc -> desc -> off)
+  const [sort, setSort] = useState({ col: null, dir: null });
+  function cycleSort(col) {
+    setSort((prev) => {
+      if (prev.col !== col) return { col, dir: "asc" };
+      if (prev.dir === "asc") return { col, dir: "desc" };
+      return { col: null, dir: null };
+    });
+  }
+  function clearSort() {
+    setSort({ col: null, dir: null });
+  }
+
+  // ===== Editor de estilos (popup)
+  const [styleEditorOpen, setStyleEditorOpen] = useState(false);
+  const [styleEditorCode, setStyleEditorCode] = useState("");
+
+  const [codeStyles, setCodeStyles] = useState(() => {
+    try {
+      const raw = localStorage.getItem("agendaP83.codeStyles.v1");
+      if (!raw) return DEFAULT_CODE_STYLES;
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_CODE_STYLES, ...(parsed || {}) };
+    } catch {
+      return DEFAULT_CODE_STYLES;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "agendaP83.codeStyles.v1",
+        JSON.stringify(codeStyles)
+      );
+    } catch {
+      // ignore
+    }
+  }, [codeStyles]);
+
+  const dynamicCodeCss = useMemo(() => buildCodeCss(codeStyles), [codeStyles]);
 
   useEffect(() => {
     fetch("/api/health")
@@ -182,30 +314,26 @@ export default function App() {
   async function loadFuncionarios() {
     const params = new URLSearchParams();
     if (qDebounced.trim()) params.set("q", qDebounced.trim());
-
     const data = await apiGet(`/api/funcionarios?${params.toString()}`);
     const list = Array.isArray(data) ? data : [];
     setFuncionarios(list);
 
-    // ✅ atualiza cache global (não depende do filtro atual)
-    setFuncionariosCache((prev) => {
+    // ✅ merge no cache global
+    setFuncCache((prev) => {
       const next = new Map(prev);
       for (const f of list) {
-        const k = String(f.Chave ?? "").trim();
+        const k = String(f?.Chave ?? "").trim();
         if (k) next.set(k, f);
       }
       return next;
     });
 
-    // ✅ rowOrder global: só acrescenta novos (NUNCA remove por causa de busca)
-    setRowOrderGlobal((prev) => {
-      const s = new Set(prev);
-      const incoming = list
-        .map((f) => String(f.Chave ?? "").trim())
-        .filter(Boolean);
-
-      const appended = incoming.filter((k) => !s.has(k));
-      return appended.length ? [...prev, ...appended] : prev;
+    // ✅ rowOrder GLOBAL: não corta pelo resultado da busca
+    setRowOrder((prev) => {
+      const keys = list.map((f) => String(f.Chave ?? "").trim()).filter(Boolean);
+      if (prev.length === 0) return keys;
+      const prevSet = new Set(prev);
+      return [...prev, ...keys.filter((k) => !prevSet.has(k))];
     });
   }
 
@@ -225,7 +353,6 @@ export default function App() {
 
     for (const r of rows) {
       const fk = String(r.FuncionarioChave ?? "").trim();
-
       let dtRaw = r.Data;
       let dt =
         typeof dtRaw === "string" ? dtRaw : pickDateFromObject(dtRaw) ?? "";
@@ -234,7 +361,6 @@ export default function App() {
         const br = brToIso(dt);
         if (br) dt = br;
       }
-
       if (!fk || !dt) continue;
       m.set(`${fk}|${dt}`, r);
     }
@@ -247,7 +373,6 @@ export default function App() {
     };
   }
 
-  // ✅ recarrega agenda para TUDO que está na grid (selectedKeys)
   async function carregarAgenda() {
     const chaves = Array.from(selectedKeys).filter(Boolean);
     if (chaves.length === 0) {
@@ -268,41 +393,44 @@ export default function App() {
     setStatus(`Agenda carregada ✅ (${rowsCount} eventos)`);
   }
 
-  // ✅ repor = limpa grid e estruturas
+  // Repor (limpa grid + agenda)
   function repor() {
     setSelectedKeys(new Set());
+    setGridKeys(new Set());
     setAgendaMap(new Map());
     setLegenda([]);
     setRawCalendar([]);
     setDeletedCells(new Set());
-    setStatus("Reposto ✅ (grid limpa)");
-    prevSelectedRef.current = new Set();
+    setSort({ col: null, dir: null });
+    setStatus("Reposto ✅ (seleção e grid limpas)");
   }
 
-  // ✅ incremental: marcar/desmarcar atualiza grid e agenda sem depender da busca
+  // checkbox -> add/remove incremental
   useEffect(() => {
-    if (!backendOk) return;
+    if (!backendOk) {
+      setGridKeys(new Set(selectedKeys));
+      return;
+    }
 
-    const prev = prevSelectedRef.current;
-    const next = selectedKeys;
+    const next = new Set(selectedKeys);
+    const prev = gridKeys;
 
     const added = Array.from(setDiff(next, prev));
     const removed = Array.from(setDiff(prev, next));
 
-    // remove imediatamente do que já está carregado
     if (removed.length) {
       setAgendaMap((m) => purgeMapByKeysPrefix(m, removed));
       setDeletedCells((s) => purgeSetByKeysPrefix(s, removed));
     }
 
-    // adiciona incrementalmente (somente das novas chaves)
+    setGridKeys(next);
+
     if (added.length) {
       (async () => {
         try {
           const { rawCalendar: calRaw, legenda: leg, agendaMap: m } =
             await fetchAgendaForKeys(added);
 
-          // se ainda não tinha calendário/legenda, aproveita do backend
           setRawCalendar((prevRaw) => (prevRaw?.length ? prevRaw : calRaw));
           setLegenda((prevLeg) => (prevLeg?.length ? prevLeg : leg));
           setAgendaMap((prevMap) => mapMerge(prevMap, m));
@@ -311,11 +439,9 @@ export default function App() {
         }
       })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKeys, backendOk]);
 
-    prevSelectedRef.current = new Set(next);
-  }, [selectedKeys, backendOk, inicio, fim]);
-
-  // recarrega lista quando busca muda (não mexe na grid!)
   useEffect(() => {
     if (!backendOk) return;
     loadFuncionarios().catch(() =>
@@ -329,25 +455,59 @@ export default function App() {
     [rawCalendar, inicio, fim]
   );
 
-  // ✅ grid usa cache global, não o resultado do filtro
-  const funcionariosByKey = useMemo(() => funcionariosCache, [funcionariosCache]);
+  // ✅ mapa global para o grid (cache)
+  const funcionariosByKey = useMemo(() => {
+    const map = new Map(funcCache);
+    // garante também o resultado atual (caso cache ainda não tenha)
+    for (const f of funcionarios) {
+      const k = String(f?.Chave ?? "").trim();
+      if (k) map.set(k, f);
+    }
+    return map;
+  }, [funcCache, funcionarios]);
+
+  const gridKeyList = useMemo(() => Array.from(gridKeys), [gridKeys]);
+
+  // ✅ base keys = rowOrder (para drag) OU ordenado por coluna (quando sort ativo)
+  const orderedKeys = useMemo(() => {
+    const base = rowOrder.length
+      ? rowOrder.filter((k) => gridKeys.has(k))
+      : gridKeyList;
+
+    if (!sort?.col || !sort?.dir) return base;
+
+    const dir = sort.dir === "desc" ? -1 : 1;
+    const col = sort.col;
+
+    const getVal = (k) => {
+      const f = funcionariosByKey.get(k) || {};
+      if (col === "Chave") return String(k ?? "");
+      if (col === "Funcao") return String(f.Funcao ?? "");
+      if (col === "Matricula") return String(f.Matricula ?? "");
+      if (col === "Nome") return String(f.Nome ?? "");
+      if (col === "Quant") return String(f.Quant ?? "");
+      return "";
+    };
+
+    const copy = [...base];
+    copy.sort((a, b) => {
+      const va = getVal(a).toLocaleUpperCase("pt-BR");
+      const vb = getVal(b).toLocaleUpperCase("pt-BR");
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+    return copy;
+  }, [rowOrder, gridKeys, gridKeyList, sort, funcionariosByKey]);
 
   const visibleKeys = useMemo(() => {
-    const gridSet = selectedKeys;
-
-    // base = ordem global filtrada pelo que está na grid
-    const base =
-      rowOrderGlobal.length > 0
-        ? rowOrderGlobal.filter((k) => gridSet.has(k))
-        : Array.from(gridSet);
-
-    if (!somenteSelecionados) return base;
-    return base; // selecionados = grid
-  }, [rowOrderGlobal, selectedKeys, somenteSelecionados]);
+    if (!somenteSelecionados) return orderedKeys;
+    return orderedKeys.filter((k) => selectedKeys.has(k));
+  }, [orderedKeys, selectedKeys, somenteSelecionados]);
 
   const legendTags = useMemo(() => {
     return (Array.isArray(legenda) ? legenda : [])
-      .slice(0, 18)
+      .slice(0, 48)
       .map((l, idx) => ({
         key: `${String(l.Codigo ?? "").trim()}-${idx}`,
         codigo: String(l.Codigo ?? "").trim(),
@@ -355,6 +515,17 @@ export default function App() {
       }))
       .filter((x) => x.codigo);
   }, [legenda]);
+
+  // detectar códigos sem estilo
+  const unknownCodes = useMemo(() => {
+    const set = new Set();
+    for (const t of legendTags) {
+      const c = normalizeCode(t.codigo);
+      if (!c) continue;
+      if (!codeStyles[c]) set.add(c);
+    }
+    return Array.from(set).sort();
+  }, [legendTags, codeStyles]);
 
   const headerInfo = useMemo(() => {
     const days = calendar.map((iso) => {
@@ -401,7 +572,6 @@ export default function App() {
   }
 
   function removeFromGrid(k) {
-    // remover via grid = desmarcar
     setSelectedKeys((prev) => {
       const s = new Set(prev);
       s.delete(k);
@@ -409,15 +579,16 @@ export default function App() {
     });
   }
 
+  // ✅ “Selecionar todos” = ADICIONA (não substitui / não apaga grid)
   function selectAll() {
-    // seleciona TUDO da lista atual (resultado do filtro)
     const keys = funcionarios
       .map((f) => String(f.Chave ?? "").trim())
       .filter(Boolean);
+
     setSelectedKeys((prev) => {
-      const s = new Set(prev);
-      for (const k of keys) s.add(k);
-      return s;
+      const next = new Set(prev);
+      for (const k of keys) next.add(k);
+      return next;
     });
   }
 
@@ -434,15 +605,24 @@ export default function App() {
     });
   }
 
+  function openStyleEditorFor(code) {
+    const c = normalizeCode(code);
+    if (!c) return;
+    setStyleEditorCode(c);
+    setStyleEditorOpen(true);
+  }
+
   return (
     <div>
+      {/* CSS dinâmico baseado nas configurações do popup */}
+      <style dangerouslySetInnerHTML={{ __html: dynamicCodeCss }} />
+
       <div className="topbar">
         <div className="brand">
           <div className="title">AgendaP83 — Escala</div>
           <div className="subtitle">{status}</div>
         </div>
 
-        {/* topbar só período */}
         <div className="controls">
           <div className="control">
             <label>Início</label>
@@ -487,26 +667,49 @@ export default function App() {
             </div>
             <div className="status">
               Dica: <b>Alt+Clique</b> numa célula = excluir/reincluir (local). •
-              Arraste ⠿ para reordenar • Botão × remove da grid
+              Arraste ⠿ • × remove
             </div>
           </div>
 
           <div className="legend">
             <span>Legenda:</span>
+
             {legendTags.length === 0 ? (
-              <span style={{ color: "#6b7280" }}>
-                (carregue agenda para ver legenda)
-              </span>
+              <span className="legend-muted">(carregue agenda para ver legenda)</span>
             ) : (
-              legendTags.map((t) => (
-                <span
-                  key={t.key}
-                  className={`tag code-${t.codigo}`}
-                  title={t.nome || t.codigo}
-                >
-                  {t.codigo}
-                </span>
-              ))
+              <>
+                {legendTags.map((t) => (
+                  <button
+                    type="button"
+                    key={t.key}
+                    className={`tag code-${t.codigo}`}
+                    title={(t.nome || t.codigo) + "\nClique para editar estilo"}
+                    onClick={() => openStyleEditorFor(t.codigo)}
+                  >
+                    {t.codigo}
+                  </button>
+                ))}
+
+                <div className="legend-tools">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      const first = legendTags[0]?.codigo || "FS";
+                      openStyleEditorFor(first);
+                    }}
+                  >
+                    Editar estilos…
+                  </button>
+
+                  {unknownCodes.length > 0 ? (
+                    <span className="legend-warn">
+                      Sem estilo: <b>{unknownCodes.join(", ")}</b> (clique no
+                      código para ajustar)
+                    </span>
+                  ) : null}
+                </div>
+              </>
             )}
           </div>
 
@@ -517,12 +720,53 @@ export default function App() {
             agendaMap={agendaMap}
             deletedCells={deletedCells}
             toggleCellDeleted={toggleCellDeleted}
-            rowOrder={rowOrderGlobal}
-            setRowOrder={setRowOrderGlobal}
+            rowOrder={rowOrder}
+            setRowOrder={setRowOrder}
             onRemoveRow={removeFromGrid}
+            sort={sort}
+            onSort={cycleSort}
+            onClearSort={clearSort}
           />
         </main>
       </div>
+
+      <LegendStyleEditor
+        open={styleEditorOpen}
+        code={styleEditorCode}
+        styles={codeStyles}
+        onClose={() => setStyleEditorOpen(false)}
+        onChange={(code, nextStyle) => {
+          const c = normalizeCode(code);
+          if (!c) return;
+          setCodeStyles((prev) => ({ ...prev, [c]: nextStyle }));
+        }}
+        onReset={(code) => {
+          const c = normalizeCode(code);
+          if (!c) return;
+          setCodeStyles((prev) => {
+            const next = { ...prev };
+            if (DEFAULT_CODE_STYLES[c]) next[c] = DEFAULT_CODE_STYLES[c];
+            else delete next[c];
+            return next;
+          });
+        }}
+        onCreateMissing={(code) => {
+          const c = normalizeCode(code);
+          if (!c) return;
+          setCodeStyles((prev) => ({
+            ...prev,
+            [c]:
+              prev[c] || {
+                mode: "solid",
+                bg1: "#FFFFFF",
+                bg2: "",
+                fg: "#000000",
+                bold: true,
+              },
+          }));
+        }}
+        knownCodes={Object.keys(codeStyles).sort()}
+      />
     </div>
   );
 }
