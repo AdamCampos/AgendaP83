@@ -138,17 +138,19 @@ function SortableRow({ id, children, onRemoveRow }) {
 
   return (
     <tr ref={setNodeRef} style={style} data-dragging={isDragging ? "1" : "0"}>
-      <td className="sticky-left col-funcao drag-handle-cell">
-        <span
-          className="drag-handle"
-          title="Arraste para reordenar"
-          {...attributes}
-          {...listeners}
-        >
-          ⠿
-        </span>
-        <span className="row-main">{children[0]}</span>
-      </td>
+<td className="sticky-left col-funcao">
+  <div className="drag-handle-cell">
+    <span
+      className="drag-handle"
+      title="Arraste para reordenar"
+      {...attributes}
+      {...listeners}
+    >
+      ⠿
+    </span>
+    <span className="row-main">{children[0]}</span>
+  </div>
+</td>
 
       <td className="sticky-left2 col-matricula">{children[1]}</td>
       <td className="sticky-left3 col-nome">{children[2]}</td>
