@@ -1,90 +1,107 @@
-# AgendaP83
+# AgendaP83 — Escala de Equipe P‑83
 
-Projeto organizado em duas pastas na raiz:
+## Introdução
 
-- `backend/` — API Node.js (Express) conectando ao SQL Server
-- `frontend/` — Vite + React
+O **AgendaP83** é uma aplicação web criada para **substituir o uso de planilhas Excel** no planejamento e acompanhamento da escala de equipes da plataforma **P‑83**.
 
-Este README documenta **apenas o backend**.
+O Excel vinha sendo utilizado por múltiplos usuários simultaneamente, o que trouxe riscos operacionais — como o ocorrido recentemente, em que um arquivo foi **apagado e salvo automaticamente no OneDrive**, causando perda de informação e retrabalho.
 
----
-
-## Backend
-
-Caminho do projeto:
-
-`AgendaP83/backend`
+Este sistema elimina esse risco ao centralizar os dados em um **banco SQL Server**, com controle via API e interface web moderna.
 
 ---
 
-## Arquivos principais
+## Comparação com o Excel
 
-### server.js
+### O que é semelhante ao Excel
 
-- Inicializa o Express
-- Habilita CORS e JSON
-- Monta todas as rotas em `/api`
-- Serve arquivos estáticos da pasta `public`
-- Implementa fallback SPA quando o frontend estiver buildado
+- Visual em **grade (linhas × colunas)**, com:
+  - Funcionários nas linhas
+  - Dias do calendário nas colunas
+- Uso de **siglas (FS, HO, TR, YNT, etc.)**
+- **Cores por código**, semelhantes ao preenchimento condicional do Excel
+- Visualização mensal contínua
+- Leitura rápida do status diário de cada funcionário
 
----
+### O que é melhoria em relação ao Excel
 
-### routes.js
-
-Arquivo responsável por **todas as rotas da API**.
-
-Principais grupos:
-
-- **Health**
-  - `GET /api/health`
-
-- **Meta (SQL Server)**
-  - `GET /api/meta/tabelas`
-  - `GET /api/meta/colunas`
-  - `GET /api/meta/top`
-  - `GET /api/meta/contagem`
-
-- **Funcionários**
-  - `GET /api/funcionarios`
-    - Filtros: `q`, `ativos`, `top`
-
-- **Legenda**
-  - `GET /api/legenda`
-    - Filtro opcional: `tipo`
-
-- **Calendário**
-  - `GET /api/calendario`
-    - Parâmetros: `inicio`, `fim`
-
-- **Agenda**
-  - `GET /api/agenda/dia`
-  - `GET /api/agenda/dia/chaves`
-  - `GET /api/agenda/periodo` (atualmente vazio)
-  - `GET /api/agenda` (endpoint agregado)
+- ✅ **Banco de dados centralizado (SQL Server)** — sem risco de sobrescrita
+- ✅ **Múltiplos usuários simultâneos**
+- ✅ **Histórico confiável**
+- ✅ **Edição controlada por célula ou período**
+- ✅ **Comentários por dia**
+- ✅ **Busca e filtros dinâmicos**
+- ✅ **Legenda dinâmica**
+- ✅ **Estilos customizáveis**
+- ✅ **Sem dependência de OneDrive**
+- ✅ **Base pronta para permissões e auditoria**
 
 ---
 
-### db.js
+## Estrutura do Projeto
 
-Responsável pela conexão com o SQL Server usando `mssql`.
-
-Características:
-
-- Pool de conexões reutilizável
-- Configuração via variáveis de ambiente
-- Falha imediata se variáveis obrigatórias não existirem
+```
+AgendaP83/
+├── backend/
+└── frontend/
+```
 
 ---
 
-## Variáveis de ambiente
+# Backend
 
-Arquivo `.env`:
+📁 `AgendaP83/backend`
 
-```env
-PORT=3001
+API Node.js (Express) conectada ao SQL Server.
 
-DB_SERVER=SERVIDOR_SQL
-DB_DATABASE=BASE_DADOS
-DB_USER=USUARIO
-DB_PASSWORD=SENHA
-DB_PORT=1433
+### Rotas principais
+
+- `GET /api/health`
+- `GET /api/funcionarios`
+- `GET /api/legenda`
+- `GET /api/agenda`
+- `POST /api/agenda/dia`
+- `DELETE /api/agenda/dia`
+
+### Banco
+
+Tabela principal:
+
+`AgendaDia`
+
+Campos:
+
+- `FuncionarioChave`
+- `Data`
+- `Codigo`
+- `Fonte`
+- `Observacao`
+
+Índice único:
+
+```
+(FuncionarioChave, Data)
+```
+
+---
+
+# Frontend
+
+📁 `AgendaP83/frontend`
+
+Aplicação em **Vite + React** com visual inspirado no Excel.
+
+### Funcionalidades
+
+- Grid estilo Excel
+- Edição por duplo clique
+- Seleção múltipla
+- Comentários com tooltip
+- Legenda dinâmica
+- Editor visual de estilos
+- Drag & drop de linhas
+
+---
+
+## Conclusão
+
+O AgendaP83 substitui o Excel com segurança, mantendo familiaridade visual e adicionando confiabilidade, multiusuário e evolução futura.
