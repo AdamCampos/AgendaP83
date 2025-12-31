@@ -442,4 +442,309 @@ router.get("/agenda", async (req, res) => {
   }
 });
 
+/* =========================
+   NEGÓCIO: AgendaDia (salvar/editar)
+   POST /api/agenda/dia
+   Body:
+   {
+     "items": [
+       { "FuncionarioChave":"JMU9", "Data":"2025-07-05", "Codigo":"FS", "Fonte":"USUARIO", "Observacao":"..." }
+     ]
+   }
+
+   Regras:
+   - Faz UPSERT por (FuncionarioChave, Data)
+   - Se Codigo vier vazio/null => APAGA o registro (limpa célula)
+========================= */
+
+function normStr(v) {
+  const s = String(v ?? "").trim();
+  return s.length ? s : "";
+}
+
+function isIsoDate(v) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
+}
+
+async function isValidLegendaCodigo(pool, codigo) {
+  // valida apenas se vier código (evita update com lixo)
+  const c = normStr(codigo);
+  if (!c) return true;
+
+  const r = pool.request();
+  r.input("codigo", sql.NVarChar(20), c);
+  const rs = await r.query(`
+    SELECT TOP (1) 1 AS ok
+    FROM dbo.LegendaCodigo
+    WHERE Ativo = 1 AND Codigo = @codigo
+  `);
+  return !!rs.recordset?.[0]?.ok;
+}
+
+router.post("/agenda/dia", async (req, res) => {
+  try {
+    const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!itemsRaw.length) {
+      return res.status(400).json({ error: "Informe body.items[]" });
+    }
+
+    // limite anti-bomba
+    const items = itemsRaw.slice(0, 2000);
+
+    // valida shape
+    for (const it of items) {
+      const fk = normStr(it.FuncionarioChave);
+      const dt = normStr(it.Data);
+      if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
+      if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
+    }
+
+    const pool = await getPool();
+
+    // opcional mas recomendado: validar códigos existentes na legenda
+    // (se você quiser permitir códigos livres, basta remover esse bloco)
+    for (const it of items) {
+      const codigo = normStr(it.Codigo);
+      if (codigo) {
+        const ok = await isValidLegendaCodigo(pool, codigo);
+        if (!ok) {
+          return res.status(400).json({ error: "CODIGO_INVALIDO", codigo });
+        }
+      }
+    }
+
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+
+    try {
+      let upserted = 0;
+      let deleted = 0;
+
+      for (const it of items) {
+        const fk = normStr(it.FuncionarioChave);
+        const dt = normStr(it.Data);
+        const codigo = normStr(it.Codigo);        // se vazio => delete
+        const fonte = normStr(it.Fonte) || "USUARIO";
+        const obs = normStr(it.Observacao);       // comentário => usa Observacao
+
+        if (!codigo) {
+          // limpa célula => apaga registro
+          const rDel = new sql.Request(tx);
+          rDel.input("fk", sql.NVarChar(50), fk);
+          rDel.input("dt", sql.Date, dt);
+          const rsDel = await rDel.query(`
+            DELETE FROM dbo.AgendaDia
+            WHERE FuncionarioChave = @fk AND Data = @dt
+          `);
+          deleted += rsDel.rowsAffected?.[0] || 0;
+          continue;
+        }
+
+        const r = new sql.Request(tx);
+        r.input("fk", sql.NVarChar(50), fk);
+        r.input("dt", sql.Date, dt);
+        r.input("codigo", sql.NVarChar(20), codigo);
+        r.input("fonte", sql.NVarChar(50), fonte);
+        r.input("obs", sql.NVarChar(sql.MAX), obs);
+
+        // UPSERT por (FuncionarioChave, Data)
+        await r.query(`
+          MERGE dbo.AgendaDia AS T
+          USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
+          ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
+          WHEN MATCHED THEN
+            UPDATE SET
+              Codigo = @codigo,
+              Fonte = @fonte,
+              Observacao = NULLIF(@obs, ''),
+              CriadoEm = COALESCE(T.CriadoEm, GETDATE())
+          WHEN NOT MATCHED THEN
+            INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
+            VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
+        `);
+
+        upserted += 1;
+      }
+
+      await tx.commit();
+      res.json({ ok: true, upserted, deleted, received: items.length });
+    } catch (errTx) {
+      await tx.rollback();
+      throw errTx;
+    }
+  } catch (err) {
+    res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
+  }
+});
+
+/* =========================
+   DELETE /api/agenda/dia
+   Body: { FuncionarioChave, Data }
+   (atalho pra limpar 1 célula)
+========================= */
+
+/* =========================
+   NEGÓCIO: AgendaDia (CRUD por API)
+   POST /api/agenda/dia   (batch upsert)
+   DELETE /api/agenda/dia (delete 1)
+========================= */
+
+function normStr(v) {
+  const s = String(v ?? "").trim();
+  return s.length ? s : "";
+}
+
+function isIsoDate(v) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
+}
+
+async function isValidLegendaCodigo(pool, codigo) {
+  const c = normStr(codigo);
+  if (!c) return true;
+
+  const r = pool.request();
+  r.input("codigo", sql.NVarChar(20), c);
+  const rs = await r.query(`
+    SELECT TOP (1) 1 AS ok
+    FROM dbo.LegendaCodigo
+    WHERE Ativo = 1 AND Codigo = @codigo
+  `);
+  return !!rs.recordset?.[0]?.ok;
+}
+
+/**
+ * POST /api/agenda/dia
+ * Body:
+ * {
+ *   "items":[
+ *     {"FuncionarioChave":"JMU9","Data":"2026-01-10","Codigo":"HO","Fonte":"USUARIO","Observacao":"..." },
+ *     ...
+ *   ]
+ * }
+ *
+ * Regras:
+ * - UPSERT por (FuncionarioChave, Data)
+ * - Se Codigo vier vazio/null => DELETE (limpa célula)
+ * - Observacao usa o campo já existente dbo.AgendaDia.Observacao
+ */
+router.post("/agenda/dia", async (req, res) => {
+  try {
+    const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!itemsRaw.length) {
+      return res.status(400).json({ error: "Informe body.items[]" });
+    }
+
+    // limite anti-bomba (ajuste se quiser)
+    const items = itemsRaw.slice(0, 2000);
+
+    for (const it of items) {
+      const fk = normStr(it.FuncionarioChave);
+      const dt = normStr(it.Data);
+      if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
+      if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
+    }
+
+    const pool = await getPool();
+
+    // valida Codigo contra dbo.LegendaCodigo (Ativo=1)
+    for (const it of items) {
+      const codigo = normStr(it.Codigo);
+      if (codigo) {
+        const ok = await isValidLegendaCodigo(pool, codigo);
+        if (!ok) return res.status(400).json({ error: "CODIGO_INVALIDO", codigo });
+      }
+    }
+
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+
+    try {
+      let upserted = 0;
+      let deleted = 0;
+
+      for (const it of items) {
+        const fk = normStr(it.FuncionarioChave);
+        const dt = normStr(it.Data);
+        const codigo = normStr(it.Codigo);              // vazio => delete
+        const fonte = normStr(it.Fonte) || "USUARIO";   // ou "MANUAL"
+        const obs = normStr(it.Observacao);             // comentário
+
+        if (!codigo) {
+          const rDel = new sql.Request(tx);
+          rDel.input("fk", sql.NVarChar(50), fk);
+          rDel.input("dt", sql.Date, dt);
+          const rsDel = await rDel.query(`
+            DELETE FROM dbo.AgendaDia
+            WHERE FuncionarioChave = @fk AND Data = @dt
+          `);
+          deleted += rsDel.rowsAffected?.[0] || 0;
+          continue;
+        }
+
+        const r = new sql.Request(tx);
+        r.input("fk", sql.NVarChar(50), fk);
+        r.input("dt", sql.Date, dt);
+        r.input("codigo", sql.NVarChar(20), codigo);
+        r.input("fonte", sql.NVarChar(50), fonte);
+        r.input("obs", sql.NVarChar(sql.MAX), obs);
+
+        await r.query(`
+          MERGE dbo.AgendaDia AS T
+          USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
+          ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
+          WHEN MATCHED THEN
+            UPDATE SET
+              Codigo = @codigo,
+              Fonte = @fonte,
+              Observacao = NULLIF(@obs, ''),
+              CriadoEm = COALESCE(T.CriadoEm, GETDATE())
+          WHEN NOT MATCHED THEN
+            INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
+            VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
+        `);
+
+        upserted += 1;
+      }
+
+      await tx.commit();
+      return res.json({ ok: true, received: items.length, upserted, deleted });
+    } catch (errTx) {
+      await tx.rollback();
+      throw errTx;
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
+  }
+});
+
+/**
+ * DELETE /api/agenda/dia
+ * Body: { "FuncionarioChave":"JMU9", "Data":"2026-01-10" }
+ */
+router.delete("/agenda/dia", async (req, res) => {
+  try {
+    const fk = normStr(req.body?.FuncionarioChave);
+    const dt = normStr(req.body?.Data);
+
+    if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
+    if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
+
+    const pool = await getPool();
+    const r = pool.request();
+    r.input("fk", sql.NVarChar(50), fk);
+    r.input("dt", sql.Date, dt);
+
+    const rs = await r.query(`
+      DELETE FROM dbo.AgendaDia
+      WHERE FuncionarioChave = @fk AND Data = @dt
+    `);
+
+    return res.json({ ok: true, deleted: rs.rowsAffected?.[0] || 0 });
+  } catch (err) {
+    return res.status(500).json({ error: "AGENDA_DIA_DELETE", message: err.message });
+  }
+});
+
+
+
 module.exports = router;

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import EmployeeList from "./components/EmployeeList.jsx";
 import ScheduleGrid from "./components/ScheduleGrid.jsx";
 import LegendStyleEditor from "./components/LegendStyleEditor.jsx";
-import { apiGet } from "./lib/api.js";
 import { useDebounce } from "./hooks/useDebounce.js";
+import { apiGet, apiPost } from "./lib/api.js";
 
 import "./App.css";
 import "./Grid.css";
@@ -126,23 +126,6 @@ const DEFAULT_CODE_LABELS = {
   HOE: "HOME OFFICE EXTRA",
 };
 
-function getMeaning(code, codeStyles) {
-  const c = normalizeCode(code);
-  if (!c) return "";
-  return codeStyles?.[c]?.label || DEFAULT_CODE_LABELS[c] || "";
-}
-
-function buildCellTooltip({ rowKey, dateStr, code, obs }, codeStyles) {
-  const c = normalizeCode(code) || "";
-  const meaning = getMeaning(c, codeStyles);
-
-  const line1 = `${rowKey} - ${dateStr}`;
-  const line2 = meaning ? `${c} — ${meaning}` : `${c}`;
-  const line3 = obs ? `Obs: ${obs}` : "";
-
-  return [line1, line2, line3].filter(Boolean).join("\n");
-}
-
 function setDiff(a, b) {
   const out = new Set();
   for (const x of a) if (!b.has(x)) out.add(x);
@@ -186,42 +169,26 @@ function purgeSetByKeysPrefix(set, keys) {
   return out;
 }
 
-/* ===== estilos default por código (base “Excel-like” + O cinza / A carmesim) ===== */
+/* ===== estilos default por código ===== */
 const DEFAULT_CODE_STYLES = {
-  // verdes
   FS: { mode: "solid", bg1: "#92D050", bg2: "", fg: "#000000", bold: true },
   B: { mode: "solid", bg1: "#00B050", bg2: "", fg: "#000000", bold: true },
-
-  // amarelos / laranjas
   F: { mode: "solid", bg1: "#FFC000", bg2: "", fg: "#000000", bold: true },
   YNT: { mode: "solid", bg1: "#FF9900", bg2: "", fg: "#000000", bold: true },
-
-  // azuis
   HO: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
   BT: { mode: "solid", bg1: "#00A99D", bg2: "", fg: "#000000", bold: true },
   PY: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
-
-  // “no seu print ANG parece amarelo”
   ANG: { mode: "solid", bg1: "#FFFF00", bg2: "", fg: "#000000", bold: true },
-
-  // rosas/vermelhos
   SGP: { mode: "solid", bg1: "#FF4D4D", bg2: "", fg: "#000000", bold: true },
   NTG: { mode: "solid", bg1: "#FF66CC", bg2: "", fg: "#000000", bold: true },
   TR: { mode: "solid", bg1: "#F8CBAD", bg2: "", fg: "#000000", bold: true },
-
-  // cinzas
   V: { mode: "solid", bg1: "#D9E1F2", bg2: "", fg: "#000000", bold: true },
   O: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
   OH: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
-
-  // carmesim
   A: { mode: "solid", bg1: "#C00000", bg2: "", fg: "#FFFFFF", bold: true },
-
-  // lavandas / neutros
   EM: { mode: "solid", bg1: "#B4C6E7", bg2: "", fg: "#000000", bold: true },
   EVT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
 
-  // outros códigos vistos na legenda (defaults neutros; calibra no popup)
   DR3T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
   DR6T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
   HZH1: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
@@ -266,7 +233,6 @@ function buildCodeCss(styleMap) {
     const fg = st?.fg || "#000000";
     const bold = !!st?.bold;
 
-    // ✅ borda editável (sem mexer no layout da tabela)
     const borderW = Number.isFinite(Number(st?.borderW))
       ? Math.max(0, Math.min(8, Number(st.borderW)))
       : 0;
@@ -283,13 +249,14 @@ function buildCodeCss(styleMap) {
         : `${bg1}`;
 
     lines.push(
-      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${bold ? 800 : 600} !important;${inset}}`
+      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${
+        bold ? 800 : 600
+      } !important;${inset}}`
     );
   }
 
   return lines.join("\n");
 }
-
 
 export default function App() {
   const [status, setStatus] = useState("verificando...");
@@ -304,13 +271,9 @@ export default function App() {
 
   const [somenteSelecionados, setSomenteSelecionados] = useState(true);
 
-  // lista atual do painel (resultado da busca)
   const [funcionarios, setFuncionarios] = useState([]);
-
-  // ✅ cache global (pra não virar “—” ao mudar a busca)
   const [funcCache, setFuncCache] = useState(() => new Map());
 
-  // seleção define quem está na grid
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [gridKeys, setGridKeys] = useState(new Set());
 
@@ -321,7 +284,6 @@ export default function App() {
   const [deletedCells, setDeletedCells] = useState(new Set());
   const [rowOrder, setRowOrder] = useState([]);
 
-  // ===== Ordenação por coluna (ciclo: off -> asc -> desc -> off)
   const [sort, setSort] = useState({ col: null, dir: null });
   function cycleSort(col) {
     setSort((prev) => {
@@ -334,7 +296,6 @@ export default function App() {
     setSort({ col: null, dir: null });
   }
 
-  // ===== Editor de estilos (popup)
   const [styleEditorOpen, setStyleEditorOpen] = useState(false);
   const [styleEditorCode, setStyleEditorCode] = useState("");
 
@@ -351,10 +312,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(
-        "agendaP83.codeStyles.v1",
-        JSON.stringify(codeStyles)
-      );
+      localStorage.setItem("agendaP83.codeStyles.v1", JSON.stringify(codeStyles));
     } catch {
       // ignore
     }
@@ -382,7 +340,6 @@ export default function App() {
     const list = Array.isArray(data) ? data : [];
     setFuncionarios(list);
 
-    // ✅ merge no cache global
     setFuncCache((prev) => {
       const next = new Map(prev);
       for (const f of list) {
@@ -392,7 +349,6 @@ export default function App() {
       return next;
     });
 
-    // ✅ rowOrder GLOBAL: não corta pelo resultado da busca
     setRowOrder((prev) => {
       const keys = list.map((f) => String(f.Chave ?? "").trim()).filter(Boolean);
       if (prev.length === 0) return keys;
@@ -457,7 +413,6 @@ export default function App() {
     setStatus(`Agenda carregada ✅ (${rowsCount} eventos)`);
   }
 
-  // Repor (limpa grid + agenda)
   function repor() {
     setSelectedKeys(new Set());
     setGridKeys(new Set());
@@ -469,7 +424,6 @@ export default function App() {
     setStatus("Reposto ✅ (seleção e grid limpas)");
   }
 
-  // checkbox -> add/remove incremental
   useEffect(() => {
     if (!backendOk) {
       setGridKeys(new Set(selectedKeys));
@@ -508,9 +462,7 @@ export default function App() {
 
   useEffect(() => {
     if (!backendOk) return;
-    loadFuncionarios().catch(() =>
-      setStatus("Falha ao carregar funcionários ❌")
-    );
+    loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendOk, qDebounced]);
 
@@ -519,10 +471,8 @@ export default function App() {
     [rawCalendar, inicio, fim]
   );
 
-  // ✅ mapa global para o grid (cache)
   const funcionariosByKey = useMemo(() => {
     const map = new Map(funcCache);
-    // garante também o resultado atual (caso cache ainda não tenha)
     for (const f of funcionarios) {
       const k = String(f?.Chave ?? "").trim();
       if (k) map.set(k, f);
@@ -532,7 +482,6 @@ export default function App() {
 
   const gridKeyList = useMemo(() => Array.from(gridKeys), [gridKeys]);
 
-  // ✅ base keys = rowOrder (para drag) OU ordenado por coluna (quando sort ativo)
   const orderedKeys = useMemo(() => {
     const base = rowOrder.length
       ? rowOrder.filter((k) => gridKeys.has(k))
@@ -580,7 +529,6 @@ export default function App() {
       .filter((x) => x.codigo);
   }, [legenda]);
 
-  // detectar códigos sem estilo
   const unknownCodes = useMemo(() => {
     const set = new Set();
     for (const t of legendTags) {
@@ -643,7 +591,6 @@ export default function App() {
     });
   }
 
-  // ✅ “Selecionar todos” = ADICIONA (não substitui / não apaga grid)
   function selectAll() {
     const keys = funcionarios
       .map((f) => String(f.Chave ?? "").trim())
@@ -678,7 +625,6 @@ export default function App() {
 
   return (
     <div>
-      {/* CSS dinâmico baseado nas configurações do popup */}
       <style dangerouslySetInnerHTML={{ __html: dynamicCodeCss }} />
 
       <div className="topbar">
@@ -731,7 +677,7 @@ export default function App() {
             </div>
             <div className="status">
               Dica: <b>Alt+Clique</b> numa célula = excluir/reincluir (local). •
-              Arraste ⠿ • × remove
+              Arraste ⠿ • × remove • Duplo clique = editar
             </div>
           </div>
 
@@ -739,7 +685,9 @@ export default function App() {
             <span>Legenda:</span>
 
             {legendTags.length === 0 ? (
-              <span className="legend-muted">(carregue agenda para ver legenda)</span>
+              <span className="legend-muted">
+                (carregue agenda para ver legenda)
+              </span>
             ) : (
               <>
                 {legendTags.map((t) => (
@@ -789,8 +737,12 @@ export default function App() {
             onRemoveRow={removeFromGrid}
             sort={sort}
             onSort={cycleSort}
-            onClearSort={clearSort}
+            onExitSort={clearSort}
             codeStyles={codeStyles}
+            // ✅ edição no grid:
+            legenda={legenda}
+            apiPost={apiPost}
+            setAgendaMap={setAgendaMap}
           />
         </main>
       </div>
@@ -818,10 +770,10 @@ export default function App() {
         onCreateMissing={(raw) => {
           const c = normalizeCode(raw);
           if (!c) return;
-        
+
           setCodeStyles((prev) => {
             if (prev?.[c]) return prev;
-        
+
             return {
               ...prev,
               [c]: {
@@ -832,12 +784,11 @@ export default function App() {
                 bold: true,
                 borderW: 0,
                 borderC: "#000000",
-                label: DEFAULT_CODE_LABELS[c] || "", // ✅ aqui
+                label: DEFAULT_CODE_LABELS[c] || "",
               },
             };
           });
         }}
-        
         onSelectCode={(c) => {
           const cc = normalizeCode(c);
           if (cc) setStyleEditorCode(cc);
