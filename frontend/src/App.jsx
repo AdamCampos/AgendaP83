@@ -90,6 +90,59 @@ function normalizeCalendar(rawCalendar, inicio, fim) {
 }
 
 /* ===== helpers Set/Map ===== */
+// Defaults (sigla -> significado)
+const DEFAULT_CODE_LABELS = {
+  EM: "EMBARCADO",
+  L: "LICENÇA",
+  TR: "TREINAMENTO",
+  EVT: "EVENTO/MISSÃO",
+  B: "BASE",
+  HO: "HOME OFFICE",
+  NB: "NÃO MOBILIZADO",
+  PT: "EM TRANSFERÊNCIA",
+  IN: "INTERINO",
+
+  O: "FOLGA",
+  A: "AFASTADO",
+  F: "FÉRIAS",
+  FS: "FINAL DE SEMANA/FERIADO",
+
+  HZH1: "HAZOP Vendor Hull 1",
+  DR3T: "DR30 TS",
+  HZPR: "HAZOP Process",
+  HZH2: "HAZOP Vendor Hull 2",
+  HZH3: "HAZOP Vendor Hull 3",
+  HZUT: "HAZOP Utilities",
+  DR6T: "DR60 TOPSIDE",
+  ANG: "ANGRA",
+  HAY: "HAYANG",
+
+  PUN: "PUNE",
+  NTG: "NANTONG",
+  SGP: "SINGAPURA",
+
+  YNT: "YANTAI",
+  BT: "BATAM",
+  HOE: "HOME OFFICE EXTRA",
+};
+
+function getMeaning(code, codeStyles) {
+  const c = normalizeCode(code);
+  if (!c) return "";
+  return codeStyles?.[c]?.label || DEFAULT_CODE_LABELS[c] || "";
+}
+
+function buildCellTooltip({ rowKey, dateStr, code, obs }, codeStyles) {
+  const c = normalizeCode(code) || "";
+  const meaning = getMeaning(c, codeStyles);
+
+  const line1 = `${rowKey} - ${dateStr}`;
+  const line2 = meaning ? `${c} — ${meaning}` : `${c}`;
+  const line3 = obs ? `Obs: ${obs}` : "";
+
+  return [line1, line2, line3].filter(Boolean).join("\n");
+}
+
 function setDiff(a, b) {
   const out = new Set();
   for (const x of a) if (!b.has(x)) out.add(x);
@@ -213,6 +266,16 @@ function buildCodeCss(styleMap) {
     const fg = st?.fg || "#000000";
     const bold = !!st?.bold;
 
+    // ✅ borda editável (sem mexer no layout da tabela)
+    const borderW = Number.isFinite(Number(st?.borderW))
+      ? Math.max(0, Math.min(8, Number(st.borderW)))
+      : 0;
+    const borderC = st?.borderC || "#000000";
+    const inset =
+      borderW > 0
+        ? `box-shadow: inset 0 0 0 ${borderW}px ${borderC} !important;`
+        : "";
+
     const selector = `.code-${CSS.escape(code)}`;
     const background =
       mode === "gradient"
@@ -220,12 +283,13 @@ function buildCodeCss(styleMap) {
         : `${bg1}`;
 
     lines.push(
-      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${bold ? 800 : 600} !important;}`
+      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${bold ? 800 : 600} !important;${inset}}`
     );
   }
 
   return lines.join("\n");
 }
+
 
 export default function App() {
   const [status, setStatus] = useState("verificando...");
@@ -726,6 +790,7 @@ export default function App() {
             sort={sort}
             onSort={cycleSort}
             onClearSort={clearSort}
+            codeStyles={codeStyles}
           />
         </main>
       </div>
@@ -750,20 +815,32 @@ export default function App() {
             return next;
           });
         }}
-        onCreateMissing={(code) => {
-          const c = normalizeCode(code);
+        onCreateMissing={(raw) => {
+          const c = normalizeCode(raw);
           if (!c) return;
-          setCodeStyles((prev) => ({
-            ...prev,
-            [c]:
-              prev[c] || {
+        
+          setCodeStyles((prev) => {
+            if (prev?.[c]) return prev;
+        
+            return {
+              ...prev,
+              [c]: {
                 mode: "solid",
                 bg1: "#FFFFFF",
-                bg2: "",
+                bg2: "#FFFFFF",
                 fg: "#000000",
                 bold: true,
+                borderW: 0,
+                borderC: "#000000",
+                label: DEFAULT_CODE_LABELS[c] || "", // ✅ aqui
               },
-          }));
+            };
+          });
+        }}
+        
+        onSelectCode={(c) => {
+          const cc = normalizeCode(c);
+          if (cc) setStyleEditorCode(cc);
         }}
         knownCodes={Object.keys(codeStyles).sort()}
       />

@@ -14,6 +14,65 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+// ===== Defaults (sigla -> significado) =====
+// Se preferir, você pode remover daqui e passar do App via props.
+const DEFAULT_CODE_LABELS = {
+  EM: "EMBARCADO",
+  L: "LICENÇA",
+  TR: "TREINAMENTO",
+  EVT: "EVENTO/MISSÃO",
+  B: "BASE",
+  HO: "HOME OFFICE",
+  NB: "NÃO MOBILIZADO",
+  PT: "EM TRANSFERÊNCIA",
+  IN: "INTERINO",
+
+  O: "FOLGA",
+  A: "AFASTADO",
+  F: "FÉRIAS",
+  FS: "FINAL DE SEMANA/FERIADO",
+
+  HZH1: "HAZOP Vendor Hull 1",
+  DR3T: "DR30 TS",
+  HZPR: "HAZOP Process",
+  HZH2: "HAZOP Vendor Hull 2",
+  HZH3: "HAZOP Vendor Hull 3",
+  HZUT: "HAZOP Utilities",
+  DR6T: "DR60 TOPSIDE",
+  ANG: "ANGRA",
+  HAY: "HAYANG",
+
+  PUN: "PUNE",
+  NTG: "NANTONG",
+  SGP: "SINGAPURA",
+
+  YNT: "YANTAI",
+  BT: "BATAM",
+  HOE: "HOME OFFICE EXTRA",
+};
+
+function normalizeCode(v) {
+  const s = String(v ?? "").trim().toUpperCase();
+  return s ? s : "";
+}
+
+function getMeaning(code, codeStyles) {
+  const c = normalizeCode(code);
+  if (!c) return "";
+  return codeStyles?.[c]?.label || DEFAULT_CODE_LABELS[c] || "";
+}
+
+function buildCellTooltip({ rowKey, dateStr, code, obs }, codeStyles) {
+  const c = normalizeCode(code) || "";
+  const meaning = getMeaning(c, codeStyles);
+
+  const line1 = `${rowKey} • ${dateStr}`;
+  const line2 = c ? (meaning ? `${c} — ${meaning}` : `${c}`) : "";
+  const line3 = obs ? `Obs: ${obs}` : "";
+
+  return [line1, line2, line3].filter(Boolean).join("\n");
+}
+
 const GridHeader = memo(function GridHeader({ headerInfo, sort, onSort }) {
   const sortMark = (col) => {
     if (sort?.col !== col || !sort?.dir) return "";
@@ -138,19 +197,19 @@ function SortableRow({ id, children, onRemoveRow }) {
 
   return (
     <tr ref={setNodeRef} style={style} data-dragging={isDragging ? "1" : "0"}>
-<td className="sticky-left col-funcao">
-  <div className="drag-handle-cell">
-    <span
-      className="drag-handle"
-      title="Arraste para reordenar"
-      {...attributes}
-      {...listeners}
-    >
-      ⠿
-    </span>
-    <span className="row-main">{children[0]}</span>
-  </div>
-</td>
+      <td className="sticky-left col-funcao">
+        <div className="drag-handle-cell">
+          <span
+            className="drag-handle"
+            title="Arraste para reordenar"
+            {...attributes}
+            {...listeners}
+          >
+            ⠿
+          </span>
+          <span className="row-main">{children[0]}</span>
+        </div>
+      </td>
 
       <td className="sticky-left2 col-matricula">{children[1]}</td>
       <td className="sticky-left3 col-nome">{children[2]}</td>
@@ -188,6 +247,9 @@ export default function ScheduleGrid({
   sort,
   onSort,
   onExitSort, // ✅ quando arrastar, sai do modo "sort"
+
+  // ✅ novo: estilos (para pegar label/significado)
+  codeStyles,
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -220,14 +282,21 @@ export default function ScheduleGrid({
       const cells = headerInfo.days.map((d) => {
         const cellKey = `${k}|${d.iso}`;
         const row = agendaMap.get(cellKey);
-        const codigo = String(row?.Codigo ?? "").trim();
+
+        const codigoRaw = String(row?.Codigo ?? "").trim();
+        const codigo = normalizeCode(codigoRaw);
         const isDeleted = deletedCells.has(cellKey);
 
-        const title = row
-          ? `${k} • ${d.iso}\n${codigo}\nFonte: ${row.Fonte ?? ""}\nObs: ${
-              row.Observacao ?? ""
-            }`
-          : `${k} • ${d.iso}`;
+        // ✅ tooltip novo: sem "Fonte: ESCALA"
+        const title = buildCellTooltip(
+          {
+            rowKey: k,
+            dateStr: d.iso,
+            code: codigo,
+            obs: String(row?.Observacao ?? "").trim(),
+          },
+          codeStyles
+        );
 
         return (
           <DayCell
@@ -263,6 +332,7 @@ export default function ScheduleGrid({
     deletedCells,
     toggleCellDeleted,
     onRemoveRow,
+    codeStyles, // ✅ importante
   ]);
 
   return (

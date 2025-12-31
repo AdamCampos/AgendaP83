@@ -26,13 +26,19 @@ export default function LegendStyleEditor({
   styles,
   knownCodes = [],
   onClose,
+  onSelectCode,
   onChange,
   onReset,
   onCreateMissing,
 }) {
   const mergedKnown = useMemo(() => {
-    const set = new Set([...(knownCodes || []), ...(Object.keys(styles || {}) || [])]);
-    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const set = new Set([
+      ...(knownCodes || []),
+      ...(Object.keys(styles || {}) || []),
+    ]);
+    return Array.from(set)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [knownCodes, styles]);
 
   const current = styles?.[code] || null;
@@ -43,6 +49,9 @@ export default function LegendStyleEditor({
     bg2: "#FFFFFF",
     fg: "#000000",
     bold: true,
+    borderW: 0,
+    borderC: "#000000",
+    label: "",
   }));
 
   useEffect(() => {
@@ -55,15 +64,24 @@ export default function LegendStyleEditor({
         bg2: "#FFFFFF",
         fg: "#000000",
         bold: true,
+        borderW: 0,
+        borderC: "#000000",
+        label: "",
       });
       return;
     }
+
     setLocal({
       mode: st.mode === "gradient" ? "gradient" : "solid",
       bg1: normalizeHex(st.bg1, "#FFFFFF"),
       bg2: normalizeHex(st.bg2, "#FFFFFF"),
       fg: normalizeHex(st.fg, "#000000"),
       bold: !!st.bold,
+      borderW: Number.isFinite(Number(st.borderW))
+        ? Math.max(0, Math.min(8, Number(st.borderW)))
+        : 0,
+      borderC: normalizeHex(st.borderC, "#000000"),
+      label: String(st.label ?? ""),
     });
   }, [open, code, styles]);
 
@@ -73,17 +91,37 @@ export default function LegendStyleEditor({
     if (!styles?.[code]) onCreateMissing?.(code);
   };
 
+  const inset =
+    local.borderW > 0
+      ? { boxShadow: `inset 0 0 0 ${local.borderW}px ${local.borderC}` }
+      : {};
+
   const previewStyle =
     local.mode === "gradient"
-      ? { background: `linear-gradient(to bottom, ${local.bg1}, ${local.bg2})`, color: local.fg, fontWeight: local.bold ? 800 : 600 }
-      : { background: local.bg1, color: local.fg, fontWeight: local.bold ? 800 : 600 };
+      ? {
+          background: `linear-gradient(to bottom, ${local.bg1}, ${local.bg2})`,
+          color: local.fg,
+          fontWeight: local.bold ? 800 : 600,
+          ...inset,
+        }
+      : {
+          background: local.bg1,
+          color: local.fg,
+          fontWeight: local.bold ? 800 : 600,
+          ...inset,
+        };
 
   return (
     <div className="lse-backdrop" role="dialog" aria-modal="true">
       <div className="lse-modal">
         <div className="lse-head">
           <div className="lse-title">Editar estilo</div>
-          <button type="button" className="lse-close" onClick={onClose} title="Fechar">
+          <button
+            type="button"
+            className="lse-close"
+            onClick={onClose}
+            title="Fechar"
+          >
             ×
           </button>
         </div>
@@ -99,6 +137,7 @@ export default function LegendStyleEditor({
                   active={c === code}
                   onClick={() => {
                     onCreateMissing?.(c);
+                    onSelectCode?.(c); // ✅ agora troca o código de verdade
                   }}
                 />
               ))}
@@ -118,11 +157,25 @@ export default function LegendStyleEditor({
 
             {!current ? (
               <div className="lse-warn">
-                Esse código ainda não tem estilo salvo. Clique em “Criar” para começar.
+                Esse código ainda não tem estilo salvo. Clique em “Criar” para
+                começar.
               </div>
             ) : null}
 
             <div className="lse-grid">
+              <label className="lse-field lse-span2">
+                <span>Significado (tooltip)</span>
+                <input
+                  type="text"
+                  value={local.label}
+                  placeholder="Ex.: Descanso, Folga, Sobreaviso..."
+                  onChange={(e) => {
+                    ensureExists();
+                    setLocal((p) => ({ ...p, label: e.target.value }));
+                  }}
+                />
+              </label>
+
               <label className="lse-field">
                 <span>Modo</span>
                 <select
@@ -144,7 +197,10 @@ export default function LegendStyleEditor({
                   value={normalizeHex(local.bg1)}
                   onChange={(e) => {
                     ensureExists();
-                    setLocal((p) => ({ ...p, bg1: e.target.value.toUpperCase() }));
+                    setLocal((p) => ({
+                      ...p,
+                      bg1: e.target.value.toUpperCase(),
+                    }));
                   }}
                 />
               </label>
@@ -157,7 +213,10 @@ export default function LegendStyleEditor({
                   disabled={local.mode !== "gradient"}
                   onChange={(e) => {
                     ensureExists();
-                    setLocal((p) => ({ ...p, bg2: e.target.value.toUpperCase() }));
+                    setLocal((p) => ({
+                      ...p,
+                      bg2: e.target.value.toUpperCase(),
+                    }));
                   }}
                 />
               </label>
@@ -169,7 +228,44 @@ export default function LegendStyleEditor({
                   value={normalizeHex(local.fg, "#000000")}
                   onChange={(e) => {
                     ensureExists();
-                    setLocal((p) => ({ ...p, fg: e.target.value.toUpperCase() }));
+                    setLocal((p) => ({
+                      ...p,
+                      fg: e.target.value.toUpperCase(),
+                    }));
+                  }}
+                />
+              </label>
+
+              <label className="lse-field">
+                <span>Borda (cor)</span>
+                <input
+                  type="color"
+                  value={normalizeHex(local.borderC, "#000000")}
+                  onChange={(e) => {
+                    ensureExists();
+                    setLocal((p) => ({
+                      ...p,
+                      borderC: e.target.value.toUpperCase(),
+                    }));
+                  }}
+                />
+              </label>
+
+              <label className="lse-field">
+                <span>Borda (espessura)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={8}
+                  step={1}
+                  value={Number.isFinite(Number(local.borderW)) ? local.borderW : 0}
+                  onChange={(e) => {
+                    ensureExists();
+                    const v = Math.max(
+                      0,
+                      Math.min(8, Number(e.target.value || 0))
+                    );
+                    setLocal((p) => ({ ...p, borderW: v }));
                   }}
                 />
               </label>
@@ -189,7 +285,11 @@ export default function LegendStyleEditor({
 
             <div className="lse-actions">
               {!current ? (
-                <button type="button" className="btn btn-secondary" onClick={() => onCreateMissing?.(code)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => onCreateMissing?.(code)}
+                >
                   Criar
                 </button>
               ) : null}
