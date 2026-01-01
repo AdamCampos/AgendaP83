@@ -136,9 +136,16 @@
     border:1px solid var(--grid-border);
     border-radius:6px;
     background:#fff;
+  
     cursor:grab;
     user-select:none;
+    touch-action:none;   /* ⭐ ESSENCIAL para o DnD funcionar */
   }
+  
+  .drag-handle:active{
+    cursor:grabbing;
+  }
+  
   .drag-handle:active{ cursor:grabbing; }
   
   tr[data-dragging="1"] td{

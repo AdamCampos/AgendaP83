@@ -651,6 +651,28 @@ export default function App() {
               onChange={(e) => setFim(e.target.value)}
             />
           </div>
+
+          <div className="controls">
+
+  {/* ✅ NOVO: botão no topo */}
+  <div className="control" style={{ alignSelf: "end" }}>
+    <button
+      type="button"
+      className="btn btn-primary"
+      onClick={carregarAgenda}
+      disabled={!backendOk || selectedKeys.size === 0}
+      title={
+        selectedKeys.size === 0
+          ? "Selecione funcionários para carregar"
+          : "Carregar agenda dos selecionados"
+      }
+    >
+      Carregar agenda
+    </button>
+  </div>
+</div>
+
+
         </div>
       </div>
 
@@ -739,7 +761,6 @@ export default function App() {
             onSort={cycleSort}
             onExitSort={clearSort}
             codeStyles={codeStyles}
-            // ✅ edição no grid:
             legenda={legenda}
             apiPost={apiPost}
             setAgendaMap={setAgendaMap}

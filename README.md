@@ -1,3 +1,4 @@
+
 # AgendaP83
 
 AgendaP83 é um projeto de agenda corporativa para acompanhamento de **funcionários**, seus **estados de trabalho/ausência** e **períodos** desses estados, com visualização em **linha do tempo** (timeline) no front-end.
@@ -56,6 +57,21 @@ Cada funcionário terá, no mínimo:
 
 ---
 
+## Banco de Dados e Tabelas
+
+O banco de dados utilizado é o **SQL Server 2012** e as tabelas essenciais incluem:
+
+- **dbo.Funcionarios**: Armazena as informações dos funcionários, como nome, função, matrícula e chave.
+- **dbo.AgendaDia**: Contém os dados sobre os dias específicos da agenda, incluindo os estados e os códigos associados a cada um.
+- **dbo.AgendaPeriodo**: Gerencia os períodos em que os funcionários estarão em determinados estados.
+- **dbo.Calendario**: Contém as datas do calendário, junto com a informação de se são ou não fins de semana.
+- **dbo.HierarquiaNiveis**: Define os níveis hierárquicos dos funcionários.
+- **dbo.HierarquiaRegras**: Define as regras hierárquicas para permissões e agrupamento.
+- **dbo.LegendaCodigo**: Contém os códigos e suas descrições para os estados de trabalho/ausência.
+- **dbo.vw_HierarquiaCompleta**: View que combina dados de hierarquia para consultas rápidas e eficientes.
+
+Essas tabelas permitem armazenar e consultar dados essenciais sobre a situação dos funcionários, seus estados de trabalho e a hierarquia organizacional.
+
 ---
 
 ## Regras e observações
@@ -79,6 +95,6 @@ Clone local (destino):
 Exemplo (Git Bash / terminal):
 ```bash
 cd /c/Projetos/VisualCode/JavaScript
-git clone https://github.com/<seu-usuario>/AgandaP83.git
-
+git clone https://github.com/AdamCampos/AgendaP83
+```
 

@@ -75,7 +75,6 @@ function buildCellTooltip({ rowKey, dateStr, code, obs }, codeStyles) {
   return [line1, line2, line3].filter(Boolean).join("\n");
 }
 
-
 function parseCellKey(cellKey) {
   const [fk, iso] = String(cellKey || "").split("|");
   return { fk, iso };
@@ -236,10 +235,16 @@ const DayCell = memo(function DayCell({
 });
 
 function SortableRow({ id, children, onRemoveRow }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
 
-  // ✅ sticky + transform em <tr> quebra. Só aplica transform quando estiver arrastando.
   const style = {
     transition,
     ...(isDragging && transform
@@ -248,27 +253,26 @@ function SortableRow({ id, children, onRemoveRow }) {
     opacity: isDragging ? 0.9 : 1,
   };
 
+  const onHandlePointerDown = (e) => {
+    dbg("[HANDLE pointerdown]", { row: id, button: e.button });
+    // ✅ chama o handler do dnd-kit (senão não inicia)
+    listeners?.onPointerDown?.(e);
+  };
+
   return (
     <tr ref={setNodeRef} style={style} data-dragging={isDragging ? "1" : "0"}>
       <td className="sticky-left col-funcao">
         <div className="drag-handle-cell">
           <span
+            ref={setActivatorNodeRef} // ✅ drag só aqui
             className="drag-handle"
             title="Arraste para reordenar"
             {...attributes}
-            {...listeners}
-            onPointerDown={(e) => {
-              // importantíssimo: não deixa pointerdown do handle interferir no clique da célula
-              e.stopPropagation();
-              dbg("[HANDLE pointerdown]", { row: id });
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              dbg("[HANDLE click]", { row: id });
-            }}
+            onPointerDown={onHandlePointerDown} // ✅ debug + inicia DnD
           >
             ⠿
           </span>
+
           <span className="row-main">{children[0]}</span>
         </div>
       </td>
@@ -282,12 +286,11 @@ function SortableRow({ id, children, onRemoveRow }) {
           <button
             className="row-remove"
             title="Remover da grid"
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
-              dbg("[ROW remove]", { row: id });
               onRemoveRow?.(id);
             }}
-            type="button"
           >
             ×
           </button>
@@ -299,6 +302,7 @@ function SortableRow({ id, children, onRemoveRow }) {
     </tr>
   );
 }
+
 
 export default function ScheduleGrid({
   visibleKeys,
@@ -315,12 +319,11 @@ export default function ScheduleGrid({
   onExitSort,
   codeStyles,
 
-  // ✅ novo: edição
+  // ✅ edição
   legenda,
   apiPost,
   setAgendaMap,
 }) {
-  // ===== seleção/edição (fica no Grid) =====
   const [selectedCells, setSelectedCells] = useState(() => new Set());
   const [anchorCell, setAnchorCell] = useState(null);
   const [cellEditorOpen, setCellEditorOpen] = useState(false);
@@ -355,18 +358,8 @@ export default function ScheduleGrid({
     dbg("[handleCellClick]", { cellKey, meta, anchorCell });
 
     setSelectedCells((prev) => {
-      // SHIFT -> range substitui seleção
-      if (meta?.shift && anchorCell) {
-        const range = selectRangeSameRow(anchorCell, cellKey);
-        dbg("[range]", {
-          anchor: anchorCell,
-          to: cellKey,
-          count: range.size,
-        });
-        return range;
-      }
+      if (meta?.shift && anchorCell) return selectRangeSameRow(anchorCell, cellKey);
 
-      // CTRL/CMD -> toggle
       if (meta?.add) {
         const next = new Set(prev);
         if (next.has(cellKey)) next.delete(cellKey);
@@ -374,17 +367,14 @@ export default function ScheduleGrid({
         return next;
       }
 
-      // clique simples -> só 1
       return new Set([cellKey]);
     });
 
-    // anchor atualiza depois do cálculo acima (para SHIFT funcionar bem)
     setAnchorCell(cellKey);
   }
 
   function handleCellEditRequest(cellKey) {
     dbg("[handleCellEditRequest]", { cellKey });
-
     setSelectedCells((prev) => (prev.has(cellKey) ? prev : new Set([cellKey])));
     setAnchorCell(cellKey);
     setCellEditorOpen(true);
@@ -407,11 +397,8 @@ export default function ScheduleGrid({
       };
     });
 
-    dbg("[applyCells] payload", items.slice(0, 5), `... total=${items.length}`);
-
     await apiPost("/api/agenda/dia", { items });
 
-    // Atualiza local sem reload
     setAgendaMap((prev) => {
       const next = new Map(prev);
       for (const it of items) {
@@ -433,7 +420,6 @@ export default function ScheduleGrid({
     dbg("[applyCells] done");
   }
 
-  // ===== DND =====
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
@@ -445,6 +431,7 @@ export default function ScheduleGrid({
 
     dbg("[DND dragEnd]", { from: active.id, to: over.id });
 
+    // saiu do sort (porque agora vale a ordem manual)
     if (sort?.col && sort?.dir) onExitSort?.();
 
     setRowOrder((prev) => {
@@ -494,10 +481,7 @@ export default function ScheduleGrid({
             isDeleted={isDeleted}
             isSelected={isSelected}
             title={title}
-            onToggleDelete={(ck) => {
-              dbg("[toggleCellDeleted]", ck);
-              toggleCellDeleted?.(ck);
-            }}
+            onToggleDelete={(ck) => toggleCellDeleted?.(ck)}
             onCellClick={handleCellClick}
             onCellEditRequest={handleCellEditRequest}
           />
@@ -537,28 +521,18 @@ export default function ScheduleGrid({
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={(evt) => {
+              dbg("[DND dragStart]", { id: evt.active?.id });
+              // ao começar a arrastar, sai do sort
+              if (sort?.col && sort?.dir) onExitSort?.();
+            }}
+            onDragCancel={() => dbg("[DND dragCancel]")}
             onDragEnd={onDragEndRow}
           >
-            <SortableContext
-              items={visibleKeys}
-              strategy={verticalListSortingStrategy}
-            >
-              <table
-                className="grid"
-                onPointerDown={(e) => dbg("[TABLE pointerdown]", e.target?.tagName)}
-                onClick={(e) => dbg("[TABLE click]", e.target?.tagName)}
-              >
-                <GridHeader
-                  headerInfo={headerInfo}
-                  sort={sort}
-                  onSort={onSort}
-                />
-                <tbody
-                  onPointerDown={(e) => dbg("[TBODY pointerdown]", e.target?.tagName)}
-                  onClick={(e) => dbg("[TBODY click]", e.target?.tagName)}
-                >
-                  {renderBody}
-                </tbody>
+            <SortableContext items={visibleKeys} strategy={verticalListSortingStrategy}>
+              <table className="grid">
+                <GridHeader headerInfo={headerInfo} sort={sort} onSort={onSort} />
+                <tbody>{renderBody}</tbody>
               </table>
             </SortableContext>
           </DndContext>
