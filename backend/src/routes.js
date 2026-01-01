@@ -6,16 +6,19 @@ const { sql, getPool } = require("./db");
    Helpers
 ========================= */
 
+// Função para garantir que o valor seja um identificador seguro (apenas letras, números e underline)
 function safeIdent(s) {
   return /^[A-Za-z0-9_]+$/.test(s);
 }
 
+// Função para garantir que a data esteja no formato ISO ou retornar um valor default
 function parseISODateOrDefault(v, fallback) {
   const s = String(v || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   return fallback;
 }
 
+// Função para processar a lista de chaves de funcionários de forma segura (split, trim e validar)
 function parseChavesList(v) {
   const s = String(v || "").trim();
   if (!s) return [];
@@ -23,17 +26,16 @@ function parseChavesList(v) {
     .split(",")
     .map(x => x.trim())
     .filter(Boolean)
-    .slice(0, 500);
+    .slice(0, 500);  // Limite de 500 chaves
 }
 
 /* =========================
-   Health
+   Health (Verifica se o servidor está funcionando corretamente)
 ========================= */
-
 router.get("/health", async (req, res) => {
   try {
     const pool = await getPool();
-    await pool.request().query("SELECT 1 as ok");
+    await pool.request().query("SELECT 1 as ok");  // Simples consulta para verificar o banco
     res.json({ status: "ok", db: "ok" });
   } catch (err) {
     res.status(500).json({ status: "error", db: "error", message: err.message });
@@ -41,9 +43,10 @@ router.get("/health", async (req, res) => {
 });
 
 /* =========================
-   META (mantém)
+   META (Mantém informações do banco, como tabelas e colunas)
 ========================= */
 
+// Rota para retornar todas as tabelas do schema dbo
 router.get("/meta/tabelas", async (req, res) => {
   try {
     const pool = await getPool();
@@ -60,6 +63,7 @@ router.get("/meta/tabelas", async (req, res) => {
   }
 });
 
+// Rota para retornar todas as colunas de uma tabela específica
 router.get("/meta/colunas", async (req, res) => {
   try {
     const schema = (req.query.schema || "dbo").trim();
@@ -92,525 +96,109 @@ router.get("/meta/colunas", async (req, res) => {
   }
 });
 
-router.get("/meta/contagem", async (req, res) => {
-  try {
-    const schema = (req.query.schema || "dbo").trim();
-    const tabela = (req.query.tabela || "").trim();
-    if (!tabela) return res.status(400).json({ error: "Informe ?tabela=" });
-
-    if (!safeIdent(schema) || !safeIdent(tabela)) {
-      return res.status(400).json({ error: "schema/tabela inválidos" });
-    }
-
-    const pool = await getPool();
-    const rs = await pool.request().query(`
-      SELECT COUNT(1) as total
-      FROM [${schema}].[${tabela}]
-    `);
-
-    res.json({ schema, tabela, total: rs.recordset?.[0]?.total ?? 0 });
-  } catch (err) {
-    res.status(500).json({ error: "META_CONTAGEM", message: err.message });
-  }
-});
-
-router.get("/meta/top", async (req, res) => {
-  try {
-    const schema = (req.query.schema || "dbo").trim();
-    const tabela = (req.query.tabela || "").trim();
-    const n = Math.min(Number(req.query.n || 10), 100);
-
-    if (!tabela) return res.status(400).json({ error: "Informe ?tabela=" });
-    if (!safeIdent(schema) || !safeIdent(tabela)) {
-      return res.status(400).json({ error: "schema/tabela inválidos" });
-    }
-
-    const pool = await getPool();
-    const rs = await pool.request().query(`
-      SELECT TOP (${n}) *
-      FROM [${schema}].[${tabela}]
-    `);
-
-    res.json(rs.recordset || []);
-  } catch (err) {
-    res.status(500).json({ error: "META_TOP", message: err.message });
-  }
-});
-
-/* =========================
-   NEGÓCIO: Funcionários
-   GET /api/funcionarios?q=&ativos=1|0&top=500
-========================= */
-
-router.get("/funcionarios", async (req, res) => {
-  try {
-    const q = String(req.query.q || "").trim();
-    const ativos = String(req.query.ativos ?? "1").trim();
-    const onlyAtivos = ativos !== "0";
-    const top = Math.min(Number(req.query.top || 500), 2000);
-
-    const pool = await getPool();
-    const r = pool.request();
-    r.input("top", sql.Int, top);
-
-    const where = [];
-    if (onlyAtivos) where.push("Ativo = 1");
-
-    if (q) {
-      r.input("qLike", sql.NVarChar(200), `%${q}%`);
-      where.push(`(
-        Nome LIKE @qLike OR
-        Matricula LIKE @qLike OR
-        Chave LIKE @qLike OR
-        Funcao LIKE @qLike
-      )`);
-    }
-
-    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-
-    const rs = await r.query(`
-      SELECT TOP (@top)
-        Chave,
-        Matricula,
-        Nome,
-        Funcao,
-        Ativo
-      FROM dbo.Funcionarios
-      ${whereSql}
-      ORDER BY Nome
-    `);
-
-    res.json(rs.recordset || []);
-  } catch (err) {
-    res.status(500).json({ error: "FUNCIONARIOS", message: err.message });
-  }
-});
-
-/* =========================
-   NEGÓCIO: Legenda
-   GET /api/legenda?tipo=STATUS|LOCAL|EVENTO (opcional)
-========================= */
-
-router.get("/legenda", async (req, res) => {
-  try {
-    const tipo = String(req.query.tipo || "").trim();
-
-    const pool = await getPool();
-    const r = pool.request();
-
-    let whereSql = "WHERE Ativo = 1";
-    if (tipo) {
-      r.input("tipo", sql.NVarChar(50), tipo);
-      whereSql += " AND Tipo = @tipo";
-    }
-
-    const rs = await r.query(`
-      SELECT
-        Codigo,
-        Descricao,
-        Tipo,
-        Icone,
-        Ordem,
-        Ativo
-      FROM dbo.LegendaCodigo
-      ${whereSql}
-      ORDER BY
-        CASE WHEN Ordem IS NULL THEN 1 ELSE 0 END,
-        Ordem,
-        Tipo,
-        Codigo
-    `);
-
-    res.json(rs.recordset || []);
-  } catch (err) {
-    res.status(500).json({ error: "LEGENDA", message: err.message });
-  }
-});
-
-/* =========================
-   NEGÓCIO: Calendário (range)
-   GET /api/calendario?inicio=YYYY-MM-DD&fim=YYYY-MM-DD
-========================= */
-
-router.get("/calendario", async (req, res) => {
-    try {
-      const inicio = parseISODateOrDefault(req.query.inicio, "2022-01-01");
-      const fim = parseISODateOrDefault(req.query.fim, "2022-12-31");
-  
-      const pool = await getPool();
-      const r = pool.request();
-      r.input("inicio", sql.Date, inicio);
-      r.input("fim", sql.Date, fim);
-  
-      const rs = await r.query(`
-        SELECT
-          CONVERT(varchar(10), Data, 23) AS Data,
-          Ano, Mes, Dia, DiaSemana, NomeDiaSemana,
-          EhFimDeSemana, EhFeriado, DescricaoFeriado
-        FROM dbo.Calendario
-        WHERE Data >= @inicio AND Data <= @fim
-        ORDER BY Data
-      `);
-  
-      res.json(rs.recordset || []);
-    } catch (err) {
-      res.status(500).json({ error: "CALENDARIO", message: err.message });
-    }
-  });
-  
-/**
- * GET /api/agenda/dia/chaves?inicio=YYYY-MM-DD&fim=YYYY-MM-DD
- * Retorna quais FuncionarioChave têm registros no período (pra você não chutar)
- */
-router.get("/agenda/dia/chaves", async (req, res) => {
-    try {
-      const inicio = parseISODateOrDefault(req.query.inicio, "2022-01-01");
-      const fim = parseISODateOrDefault(req.query.fim, "2022-12-31");
-  
-      const pool = await getPool();
-      const r = pool.request();
-      r.input("inicio", sql.Date, inicio);
-      r.input("fim", sql.Date, fim);
-  
-      const rs = await r.query(`
-        SELECT
-          FuncionarioChave,
-          COUNT(1) AS Total
-        FROM dbo.AgendaDia
-        WHERE Data >= @inicio AND Data <= @fim
-        GROUP BY FuncionarioChave
-        ORDER BY Total DESC, FuncionarioChave
-      `);
-  
-      res.json(rs.recordset || []);
-    } catch (err) {
-      res.status(500).json({ error: "AGENDA_DIA_CHAVES", message: err.message });
-    }
-  });
-  
-
-/* =========================
-   NEGÓCIO: AgendaDia (range + chaves)
-   GET /api/agenda/dia?chaves=URFG,URFA&inicio=YYYY-MM-DD&fim=YYYY-MM-DD
-========================= */
-
-router.get("/agenda/dia", async (req, res) => {
-  try {
-    const inicio = parseISODateOrDefault(req.query.inicio, "2022-01-01");
-    const fim = parseISODateOrDefault(req.query.fim, "2022-12-31");
-    const chaves = parseChavesList(req.query.chaves);
-
-    const pool = await getPool();
-    const r = pool.request();
-    r.input("inicio", sql.Date, inicio);
-    r.input("fim", sql.Date, fim);
-
-    const where = ["Data >= @inicio AND Data <= @fim"];
-
-    if (chaves.length) {
-      const params = chaves.map((_, i) => `@c${i}`);
-      chaves.forEach((v, i) => r.input(`c${i}`, sql.NVarChar(50), v));
-      where.push(`FuncionarioChave IN (${params.join(",")})`);
-    }
-
-    const rs = await r.query(`
-      SELECT
-        AgendaDiaId,
-        FuncionarioChave,
-        CONVERT(varchar(10), Data, 23) AS Data,
-        Codigo,
-        Fonte,
-        Observacao
-      FROM dbo.AgendaDia
-      WHERE ${where.join(" AND ")}
-      ORDER BY FuncionarioChave, Data
-    `);
-
-    res.json(rs.recordset || []);
-  } catch (err) {
-    res.status(500).json({ error: "AGENDA_DIA", message: err.message });
-  }
-});
-
-/* =========================
-   NEGÓCIO: AgendaPeriodo
-   (por enquanto vazio no banco → retorna [] sempre)
-   GET /api/agenda/periodo?chaves=...&inicio=...&fim=...
-========================= */
-
-router.get("/agenda/periodo", async (req, res) => {
-  try {
-    // Quando você popular a tabela e mandar o TOP/colunas,
-    // a gente implementa query real. Por ora:
-    res.json([]);
-  } catch (err) {
-    res.status(500).json({ error: "AGENDA_PERIODO", message: err.message });
-  }
-});
-
-/* =========================
-   Endpoint “combo” (para o front chamar 1 vez)
-   GET /api/agenda?chaves=...&inicio=...&fim=...
-   Retorna: { calendario, agendaDia, agendaPeriodo, legenda }
-========================= */
-
-router.get("/agenda", async (req, res) => {
-  try {
-    const inicio = parseISODateOrDefault(req.query.inicio, "2022-01-01");
-    const fim = parseISODateOrDefault(req.query.fim, "2022-12-31");
-    const chaves = parseChavesList(req.query.chaves);
-
-    const pool = await getPool();
-
-    // 1) Calendário
-    const rCal = pool.request();
-    rCal.input("inicio", sql.Date, inicio);
-    rCal.input("fim", sql.Date, fim);
-    const calRs = await rCal.query(`
-      SELECT
-        CONVERT(varchar(10), Data, 23) AS Data,
-        Ano,
-        Mes,
-        Dia,
-        DiaSemana,
-        NomeDiaSemana,
-        EhFimDeSemana,
-        EhFeriado,
-        DescricaoFeriado
-      FROM dbo.Calendario
-      WHERE Data >= @inicio AND Data <= @fim
-      ORDER BY Data
-    `);
-
-    // 2) AgendaDia
-    const rDia = pool.request();
-    rDia.input("inicio", sql.Date, inicio);
-    rDia.input("fim", sql.Date, fim);
-
-    const where = ["Data >= @inicio AND Data <= @fim"];
-    if (chaves.length) {
-      const params = chaves.map((_, i) => `@c${i}`);
-      chaves.forEach((v, i) => rDia.input(`c${i}`, sql.NVarChar(50), v));
-      where.push(`FuncionarioChave IN (${params.join(",")})`);
-    }
-
-    const diaRs = await rDia.query(`
-      SELECT
-        AgendaDiaId,
-        FuncionarioChave,
-        CONVERT(varchar(10), Data, 23) AS Data,
-        Codigo,
-        Fonte,
-        Observacao
-      FROM dbo.AgendaDia
-      WHERE ${where.join(" AND ")}
-      ORDER BY FuncionarioChave, Data
-    `);
-
-    // 3) Periodo (vazio por enquanto)
-    const periodo = [];
-
-    // 4) Legenda (ativa)
-    const legRs = await pool.request().query(`
-      SELECT
-        Codigo,
-        Descricao,
-        Tipo,
-        Icone,
-        Ordem,
-        Ativo
-      FROM dbo.LegendaCodigo
-      WHERE Ativo = 1
-      ORDER BY
-        CASE WHEN Ordem IS NULL THEN 1 ELSE 0 END,
-        Ordem,
-        Tipo,
-        Codigo
-    `);
-
-    res.json({
-      inicio,
-      fim,
-      chaves,
-      calendario: calRs.recordset || [],
-      agendaDia: diaRs.recordset || [],
-      agendaPeriodo: periodo,
-      legenda: legRs.recordset || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: "AGENDA_COMBO", message: err.message });
-  }
-});
-
-/* =========================
-   NEGÓCIO: AgendaDia (salvar/editar)
-   POST /api/agenda/dia
-   Body:
-   {
-     "items": [
-       { "FuncionarioChave":"JMU9", "Data":"2025-07-05", "Codigo":"FS", "Fonte":"USUARIO", "Observacao":"..." }
-     ]
-   }
-
-   Regras:
-   - Faz UPSERT por (FuncionarioChave, Data)
-   - Se Codigo vier vazio/null => APAGA o registro (limpa célula)
-========================= */
-
-function normStr(v) {
-  const s = String(v ?? "").trim();
-  return s.length ? s : "";
-}
-
-function isIsoDate(v) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
-}
-
-async function isValidLegendaCodigo(pool, codigo) {
-  // valida apenas se vier código (evita update com lixo)
-  const c = normStr(codigo);
-  if (!c) return true;
-
+// Função para buscar subordinados diretos
+async function getSubordinadosDiretos(funcionarioChave) {
+  const pool = await getPool();
   const r = pool.request();
-  r.input("codigo", sql.NVarChar(20), c);
-  const rs = await r.query(`
-    SELECT TOP (1) 1 AS ok
-    FROM dbo.LegendaCodigo
-    WHERE Ativo = 1 AND Codigo = @codigo
+
+  r.input('FuncionarioChave', sql.Char(4), funcionarioChave);
+
+  const result = await r.query(`
+    SELECT
+      f.SuperiorChave, 
+      f.SubordinadoChave,
+      f1.Nome AS NomeSuperior,
+      f2.Nome AS NomeSubordinado,
+      f1.Funcao AS FuncaoSuperior
+    FROM [dbo].[FuncionarioHierarquia] f
+    JOIN [dbo].[Funcionarios] f1 ON f1.Chave = f.SuperiorChave
+    JOIN [dbo].[Funcionarios] f2 ON f2.Chave = f.SubordinadoChave
+    WHERE f.SuperiorChave = @FuncionarioChave
   `);
-  return !!rs.recordset?.[0]?.ok;
+
+  console.log("Subordinados diretos:", result.recordset);
+  return result.recordset || [];
 }
 
-router.post("/agenda/dia", async (req, res) => {
-  try {
-    const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (!itemsRaw.length) {
-      return res.status(400).json({ error: "Informe body.items[]" });
-    }
+// Função recursiva para pegar subordinados completos (diretos e indiretos) com agrupamento de subordinados únicos
+async function getSubordinadosCompletos(funcionarioChave) {
+  const todosSubordinados = [];
+  const subordinadosMap = new Map(); // Usado para garantir subordinados únicos
 
-    // limite anti-bomba
-    const items = itemsRaw.slice(0, 2000);
+  // Função recursiva para buscar todos os subordinados
+  async function buscarSubordinados(funcionarioChave, nivel = 1) {
+    const subordinadosDiretos = await getSubordinadosDiretos(funcionarioChave);
 
-    // valida shape
-    for (const it of items) {
-      const fk = normStr(it.FuncionarioChave);
-      const dt = normStr(it.Data);
-      if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
-      if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
-    }
+    console.log(`Subordinados diretos para ${funcionarioChave}:`, subordinadosDiretos);
 
-    const pool = await getPool();
+    // Agrupando subordinados por NomeSubordinado de forma única
+    for (const subordinado of subordinadosDiretos) {
+      if (!subordinadosMap.has(subordinado.SubordinadoChave)) {
+        subordinadosMap.set(subordinado.SubordinadoChave, subordinado);
+        subordinado.Nivel = nivel;
 
-    // opcional mas recomendado: validar códigos existentes na legenda
-    // (se você quiser permitir códigos livres, basta remover esse bloco)
-    for (const it of items) {
-      const codigo = normStr(it.Codigo);
-      if (codigo) {
-        const ok = await isValidLegendaCodigo(pool, codigo);
-        if (!ok) {
-          return res.status(400).json({ error: "CODIGO_INVALIDO", codigo });
+        // Verificando se há supervisores duplicados, e substituindo pela função do superior
+        const supervisores = subordinadosDiretos.filter(item => item.SubordinadoChave === subordinado.SubordinadoChave);
+        if (supervisores.length > 1) {
+          // Substitui os nomes dos supervisores pela função do superior
+          subordinado.NomeSuperior = supervisores.map(s => s.FuncaoSuperior).join(", ");
+        } else {
+          // Caso haja um único superior, substitui o nome do superior pela função
+          subordinado.NomeSuperior = subordinado.FuncaoSuperior;
         }
+
+        // Limpa ou mantém o campo 'SuperiorChave' vazio
+        subordinado.SuperiorChave = "";  // Ou pode deixar vazio
+
+        todosSubordinados.push(subordinado);
       }
     }
 
-    const tx = new sql.Transaction(pool);
-    await tx.begin();
-
-    try {
-      let upserted = 0;
-      let deleted = 0;
-
-      for (const it of items) {
-        const fk = normStr(it.FuncionarioChave);
-        const dt = normStr(it.Data);
-        const codigo = normStr(it.Codigo);        // se vazio => delete
-        const fonte = normStr(it.Fonte) || "USUARIO";
-        const obs = normStr(it.Observacao);       // comentário => usa Observacao
-
-        if (!codigo) {
-          // limpa célula => apaga registro
-          const rDel = new sql.Request(tx);
-          rDel.input("fk", sql.NVarChar(50), fk);
-          rDel.input("dt", sql.Date, dt);
-          const rsDel = await rDel.query(`
-            DELETE FROM dbo.AgendaDia
-            WHERE FuncionarioChave = @fk AND Data = @dt
-          `);
-          deleted += rsDel.rowsAffected?.[0] || 0;
-          continue;
-        }
-
-        const r = new sql.Request(tx);
-        r.input("fk", sql.NVarChar(50), fk);
-        r.input("dt", sql.Date, dt);
-        r.input("codigo", sql.NVarChar(20), codigo);
-        r.input("fonte", sql.NVarChar(50), fonte);
-        r.input("obs", sql.NVarChar(sql.MAX), obs);
-
-        // UPSERT por (FuncionarioChave, Data)
-        await r.query(`
-          MERGE dbo.AgendaDia AS T
-          USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
-          ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
-          WHEN MATCHED THEN
-            UPDATE SET
-              Codigo = @codigo,
-              Fonte = @fonte,
-              Observacao = NULLIF(@obs, ''),
-              CriadoEm = COALESCE(T.CriadoEm, GETDATE())
-          WHEN NOT MATCHED THEN
-            INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
-            VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
-        `);
-
-        upserted += 1;
-      }
-
-      await tx.commit();
-      res.json({ ok: true, upserted, deleted, received: items.length });
-    } catch (errTx) {
-      await tx.rollback();
-      throw errTx;
+    // Recursão para pegar subordinados do subordinado (indiretos)
+    for (const subordinado of subordinadosDiretos) {
+      await buscarSubordinados(subordinado.SubordinadoChave, nivel + 1);
     }
+  }
+
+  // Inicia a busca com o funcionário
+  await buscarSubordinados(funcionarioChave);
+
+  console.log("Subordinados completos (únicos):", todosSubordinados);
+
+  return todosSubordinados;
+}
+
+
+// Rota para retornar a hierarquia com debug
+router.get('/hierarquia', async (req, res) => {
+  try {
+    const funcionarioChave = req.query.funcionarioChave;
+
+    if (!funcionarioChave || funcionarioChave.length !== 4) {
+      return res.status(400).json({ error: "A chave do funcionário deve ter 4 caracteres." });
+    }
+
+    // Obtemos todos os subordinados (diretos e indiretos) do funcionário
+    const subordinados = await getSubordinadosCompletos(funcionarioChave);
+
+    if (subordinados.length === 0) {
+      return res.status(404).json({ message: "Nenhum subordinado encontrado." });
+    }
+
+    // Retorna os subordinados como resposta
+    return res.json(subordinados);
+
   } catch (err) {
-    res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
+    console.error("Erro ao obter hierarquia:", err);
+    return res.status(500).json({ error: "Erro interno do servidor", message: err.message });
   }
 });
 
-/* =========================
-   DELETE /api/agenda/dia
-   Body: { FuncionarioChave, Data }
-   (atalho pra limpar 1 célula)
-========================= */
+
 
 /* =========================
-   NEGÓCIO: AgendaDia (CRUD por API)
-   POST /api/agenda/dia   (batch upsert)
-   DELETE /api/agenda/dia (delete 1)
+   NEGÓCIO: AgendaDia (CRUD)
 ========================= */
-
-function normStr(v) {
-  const s = String(v ?? "").trim();
-  return s.length ? s : "";
-}
-
-function isIsoDate(v) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim());
-}
-
-async function isValidLegendaCodigo(pool, codigo) {
-  const c = normStr(codigo);
-  if (!c) return true;
-
-  const r = pool.request();
-  r.input("codigo", sql.NVarChar(20), c);
-  const rs = await r.query(`
-    SELECT TOP (1) 1 AS ok
-    FROM dbo.LegendaCodigo
-    WHERE Ativo = 1 AND Codigo = @codigo
-  `);
-  return !!rs.recordset?.[0]?.ok;
-}
 
 /**
  * POST /api/agenda/dia
@@ -621,7 +209,7 @@ async function isValidLegendaCodigo(pool, codigo) {
  *     ...
  *   ]
  * }
- *
+ * 
  * Regras:
  * - UPSERT por (FuncionarioChave, Data)
  * - Se Codigo vier vazio/null => DELETE (limpa célula)
@@ -634,9 +222,9 @@ router.post("/agenda/dia", async (req, res) => {
       return res.status(400).json({ error: "Informe body.items[]" });
     }
 
-    // limite anti-bomba (ajuste se quiser)
-    const items = itemsRaw.slice(0, 2000);
+    const items = itemsRaw.slice(0, 2000);  // Limite para evitar "ataques" de inserção massiva
 
+    // Valida o formato da data e se o FuncionarioChave está presente
     for (const it of items) {
       const fk = normStr(it.FuncionarioChave);
       const dt = normStr(it.Data);
@@ -646,105 +234,65 @@ router.post("/agenda/dia", async (req, res) => {
 
     const pool = await getPool();
 
-    // valida Codigo contra dbo.LegendaCodigo (Ativo=1)
-    for (const it of items) {
-      const codigo = normStr(it.Codigo);
-      if (codigo) {
-        const ok = await isValidLegendaCodigo(pool, codigo);
-        if (!ok) return res.status(400).json({ error: "CODIGO_INVALIDO", codigo });
-      }
-    }
-
+    // Transação para garantir consistência de dados
     const tx = new sql.Transaction(pool);
     await tx.begin();
 
-    try {
-      let upserted = 0;
-      let deleted = 0;
+    let upserted = 0;
+    let deleted = 0;
 
-      for (const it of items) {
-        const fk = normStr(it.FuncionarioChave);
-        const dt = normStr(it.Data);
-        const codigo = normStr(it.Codigo);              // vazio => delete
-        const fonte = normStr(it.Fonte) || "USUARIO";   // ou "MANUAL"
-        const obs = normStr(it.Observacao);             // comentário
+    // Para cada item na lista, realiza o upsert ou delete
+    for (const it of items) {
+      const fk = normStr(it.FuncionarioChave);
+      const dt = normStr(it.Data);
+      const codigo = normStr(it.Codigo);  // Se for vazio, deletar
+      const fonte = normStr(it.Fonte) || "USUARIO";
+      const obs = normStr(it.Observacao); // Comentário
 
-        if (!codigo) {
-          const rDel = new sql.Request(tx);
-          rDel.input("fk", sql.NVarChar(50), fk);
-          rDel.input("dt", sql.Date, dt);
-          const rsDel = await rDel.query(`
-            DELETE FROM dbo.AgendaDia
-            WHERE FuncionarioChave = @fk AND Data = @dt
-          `);
-          deleted += rsDel.rowsAffected?.[0] || 0;
-          continue;
-        }
-
-        const r = new sql.Request(tx);
-        r.input("fk", sql.NVarChar(50), fk);
-        r.input("dt", sql.Date, dt);
-        r.input("codigo", sql.NVarChar(20), codigo);
-        r.input("fonte", sql.NVarChar(50), fonte);
-        r.input("obs", sql.NVarChar(sql.MAX), obs);
-
-        await r.query(`
-          MERGE dbo.AgendaDia AS T
-          USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
-          ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
-          WHEN MATCHED THEN
-            UPDATE SET
-              Codigo = @codigo,
-              Fonte = @fonte,
-              Observacao = NULLIF(@obs, ''),
-              CriadoEm = COALESCE(T.CriadoEm, GETDATE())
-          WHEN NOT MATCHED THEN
-            INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
-            VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
+      if (!codigo) {
+        // Deleta o registro se o código for vazio
+        const rDel = new sql.Request(tx);
+        rDel.input("fk", sql.NVarChar(50), fk);
+        rDel.input("dt", sql.Date, dt);
+        await rDel.query(`
+          DELETE FROM dbo.AgendaDia
+          WHERE FuncionarioChave = @fk AND Data = @dt
         `);
-
-        upserted += 1;
+        deleted += 1;
+        continue;
       }
 
-      await tx.commit();
-      return res.json({ ok: true, received: items.length, upserted, deleted });
-    } catch (errTx) {
-      await tx.rollback();
-      throw errTx;
+      // Realiza o UPSERT se o código não for vazio
+      const r = new sql.Request(tx);
+      r.input("fk", sql.NVarChar(50), fk);
+      r.input("dt", sql.Date, dt);
+      r.input("codigo", sql.NVarChar(20), codigo);
+      r.input("fonte", sql.NVarChar(50), fonte);
+      r.input("obs", sql.NVarChar(sql.MAX), obs);
+
+      await r.query(`
+        MERGE dbo.AgendaDia AS T
+        USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
+        ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
+        WHEN MATCHED THEN
+          UPDATE SET
+            Codigo = @codigo,
+            Fonte = @fonte,
+            Observacao = NULLIF(@obs, ''),
+            CriadoEm = COALESCE(T.CriadoEm, GETDATE())
+        WHEN NOT MATCHED THEN
+          INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
+          VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
+      `);
+
+      upserted += 1;
     }
+
+    await tx.commit();
+    res.json({ ok: true, received: items.length, upserted, deleted });
   } catch (err) {
-    return res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
+    res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
   }
 });
-
-/**
- * DELETE /api/agenda/dia
- * Body: { "FuncionarioChave":"JMU9", "Data":"2026-01-10" }
- */
-router.delete("/agenda/dia", async (req, res) => {
-  try {
-    const fk = normStr(req.body?.FuncionarioChave);
-    const dt = normStr(req.body?.Data);
-
-    if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
-    if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
-
-    const pool = await getPool();
-    const r = pool.request();
-    r.input("fk", sql.NVarChar(50), fk);
-    r.input("dt", sql.Date, dt);
-
-    const rs = await r.query(`
-      DELETE FROM dbo.AgendaDia
-      WHERE FuncionarioChave = @fk AND Data = @dt
-    `);
-
-    return res.json({ ok: true, deleted: rs.rowsAffected?.[0] || 0 });
-  } catch (err) {
-    return res.status(500).json({ error: "AGENDA_DIA_DELETE", message: err.message });
-  }
-});
-
-
 
 module.exports = router;
