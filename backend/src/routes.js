@@ -306,84 +306,62 @@ router.get("/funcionarios/byKeys", async (req, res) => {
  * - Se Codigo vier vazio/null => DELETE (limpa célula)
  * - Observacao usa o campo já existente dbo.AgendaDia.Observacao
  */
-router.post("/agenda/dia", async (req, res) => {
+router.get("/agenda", async (req, res) => {
   try {
-    const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
-    if (!itemsRaw.length) {
-      return res.status(400).json({ error: "Informe body.items[]" });
-    }
+    const inicio = parseISODateOrDefault(req.query.inicio, "2026-01-01");
+    const fim = parseISODateOrDefault(req.query.fim, "2026-01-31");
+    const chaves = parseChavesList(req.query.chaves);
 
-    const items = itemsRaw.slice(0, 2000);  // Limite para evitar "ataques" de inserção massiva
-
-    // Valida o formato da data e se o FuncionarioChave está presente
-    for (const it of items) {
-      const fk = normStr(it.FuncionarioChave);
-      const dt = normStr(it.Data);
-      if (!fk) return res.status(400).json({ error: "FuncionarioChave obrigatório" });
-      if (!isIsoDate(dt)) return res.status(400).json({ error: "Data inválida (YYYY-MM-DD)" });
+    if (!chaves.length) {
+      return res.json({ calendario: [], legenda: [], agendaDia: [] });
     }
 
     const pool = await getPool();
+    const r = pool.request();
 
-    // Transação para garantir consistência de dados
-    const tx = new sql.Transaction(pool);
-    await tx.begin();
+    r.input("inicio", sql.Date, inicio);
+    r.input("fim", sql.Date, fim);
 
-    let upserted = 0;
-    let deleted = 0;
+    // IN seguro via parâmetros
+    const params = [];
+    chaves.forEach((k, idx) => {
+      const p = `k${idx}`;
+      params.push(`@${p}`);
+      r.input(p, sql.Char(4), String(k).trim());
+    });
 
-    // Para cada item na lista, realiza o upsert ou delete
-    for (const it of items) {
-      const fk = normStr(it.FuncionarioChave);
-      const dt = normStr(it.Data);
-      const codigo = normStr(it.Codigo);  // Se for vazio, deletar
-      const fonte = normStr(it.Fonte) || "USUARIO";
-      const obs = normStr(it.Observacao); // Comentário
+    const inClause = params.join(",");
 
-      if (!codigo) {
-        // Deleta o registro se o código for vazio
-        const rDel = new sql.Request(tx);
-        rDel.input("fk", sql.NVarChar(50), fk);
-        rDel.input("dt", sql.Date, dt);
-        await rDel.query(`
-          DELETE FROM dbo.AgendaDia
-          WHERE FuncionarioChave = @fk AND Data = @dt
-        `);
-        deleted += 1;
-        continue;
-      }
+    // agendaDia
+    const rs = await r.query(`
+      SELECT
+        FuncionarioChave,
+        CONVERT(varchar(10), Data, 23) as Data,
+        Codigo,
+        Fonte,
+        Observacao
+      FROM dbo.AgendaDia
+      WHERE Data >= @inicio AND Data <= @fim
+        AND FuncionarioChave IN (${inClause})
+      ORDER BY FuncionarioChave, Data
+    `);
 
-      // Realiza o UPSERT se o código não for vazio
-      const r = new sql.Request(tx);
-      r.input("fk", sql.NVarChar(50), fk);
-      r.input("dt", sql.Date, dt);
-      r.input("codigo", sql.NVarChar(20), codigo);
-      r.input("fonte", sql.NVarChar(50), fonte);
-      r.input("obs", sql.NVarChar(sql.MAX), obs);
+    const agendaDia = rs.recordset || [];
 
-      await r.query(`
-        MERGE dbo.AgendaDia AS T
-        USING (SELECT @fk AS FuncionarioChave, @dt AS Data) AS S
-        ON (T.FuncionarioChave = S.FuncionarioChave AND T.Data = S.Data)
-        WHEN MATCHED THEN
-          UPDATE SET
-            Codigo = @codigo,
-            Fonte = @fonte,
-            Observacao = NULLIF(@obs, ''),
-            CriadoEm = COALESCE(T.CriadoEm, GETDATE())
-        WHEN NOT MATCHED THEN
-          INSERT (FuncionarioChave, Data, Codigo, Fonte, Observacao, CriadoEm)
-          VALUES (@fk, @dt, @codigo, @fonte, NULLIF(@obs, ''), GETDATE());
-      `);
+    // legenda mínima: códigos distintos (nome vazio)
+    const codes = Array.from(new Set(agendaDia.map(x => String(x.Codigo ?? "").trim()).filter(Boolean)));
+    const legenda = codes.map(c => ({ Codigo: c, Nome: "" }));
 
-      upserted += 1;
-    }
-
-    await tx.commit();
-    res.json({ ok: true, received: items.length, upserted, deleted });
+    res.json({
+      calendario: [],      // o front já tem fallback
+      legenda,
+      agendaDia,
+    });
   } catch (err) {
-    res.status(500).json({ error: "AGENDA_DIA_SAVE", message: err.message });
+    console.error("Erro /api/agenda:", err);
+    res.status(500).json({ error: "AGENDA_GET", message: err.message });
   }
 });
+
 
 module.exports = router;

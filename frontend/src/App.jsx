@@ -19,18 +19,60 @@ import "./Cells.css";
 import "./CodeStyles.css";
 
 export default function App() {
-  const GROUPS = ["SUEIN", "SUMEC", "SUPROD", "SUEMB"];
+  const GROUPS = [
+    "SUEIN", "SUMEC", "SUPROD", "SUEMB",
+    "COMAN", "COEMB", "COPROD",
+    "ADM", "ENGENHARIA",
+    "GERENTES",
+  ];
+  const GROUP_PLAN = useMemo(() => {
+
+    return (groupName) => {
+      // Supervisores: inclui eles mesmos + subordinados
+      if (["SUEIN", "SUMEC", "SUPROD", "SUEMB"].includes(groupName)) {
+        return {
+          baseGroups: [groupName],   // carrega supervisores + subordinados
+          roleIncludes: [],          // nada extra
+        };
+      }
+
+      // Coordenadores: inclui o coordenador + “tudo do(s) grupo(s) base”
+      if (groupName === "COMAN") {
+        return { baseGroups: ["SUEIN", "SUMEC"], roleIncludes: ["COMAN"] };
+      }
+      if (groupName === "COEMB") {
+        return { baseGroups: ["SUEMB"], roleIncludes: ["COEMB"] };
+      }
+      if (groupName === "COPROD") {
+        return { baseGroups: ["SUPROD"], roleIncludes: ["COPROD"] };
+      }
+
+      // Administrativo
+      if (groupName === "ADM") {
+        return { baseGroups: [], roleIncludes: ["ADM"] };
+      }
+      if (groupName === "ENGENHARIA") {
+        return { baseGroups: [], roleIncludes: ["ENG"] };
+      }
+
+      // Gerentes: um botão que traz GEPLAT + GEOP
+      if (groupName === "GERENTES") {
+        return { baseGroups: [], roleIncludes: ["GEPLAT", "GEOP"] };
+      }
+
+      return { baseGroups: [], roleIncludes: [] };
+    };
+  }, []);
+
 
   // ✅ preencha com seus supervisores (SQL: WHERE Funcao='...') — já coloquei SUEIN
-  const FALLBACK_SUPERVISORS_BY_GROUP = useMemo(
-    () => ({
-      SUEIN: ["FRCF", "NVBN", "RWEU", "WVY4", "YT3I"],
-      SUMEC: [],
-      SUPROD: [],
-      SUEMB: [],
-    }),
-    []
-  );
+  const FALLBACK_SUPERVISORS_BY_GROUP = {
+    SUEIN: ["FRCF", "NVBN", "RWEU", "WVY4", "YT3I"],
+    SUMEC: [],
+    SUPROD: [],
+    SUEMB: [],
+  };
+  
 
   // ===== status/back-end =====
   const [status, setStatus] = useState("verificando...");
@@ -79,7 +121,10 @@ export default function App() {
     apiGet,
     funcionariosByKey,
     fallbackSupervisorsByGroup: FALLBACK_SUPERVISORS_BY_GROUP,
+    groupPlan: GROUP_PLAN, // ✅ novo
   });
+
+
 
   // lista exibida no EmployeeList
   const listForSidebar = groupEmployees ?? funcionarios;
@@ -184,6 +229,7 @@ export default function App() {
 
   async function carregarAgenda() {
     const chaves = Array.from(selectedKeys).filter(Boolean);
+  
     if (chaves.length === 0) {
       setAgendaMap(new Map());
       setRawCalendar([]);
@@ -191,16 +237,24 @@ export default function App() {
       setStatus("Selecione funcionários para carregar a agenda.");
       return;
     }
-
+  
     setStatus("Carregando agenda...");
-    const { rawCalendar: calRaw, legenda: leg, agendaMap: m, rowsCount } =
-      await fetchAgendaForKeys(chaves);
-
-    setRawCalendar(calRaw);
-    setLegenda(leg);
-    setAgendaMap(m);
-    setStatus(`Agenda carregada ✅ (${rowsCount} eventos)`);
+  
+    try {
+      const { rawCalendar: calRaw, legenda: leg, agendaMap: m, rowsCount } =
+        await fetchAgendaForKeys(chaves);
+  
+      setRawCalendar(calRaw);
+      setLegenda(leg);
+      setAgendaMap(m);
+  
+      setStatus(`Agenda carregada ✅ (${rowsCount} eventos)`);
+    } catch (e) {
+      console.error("Falha ao carregar agenda:", e);
+      setStatus(`Falha ao carregar agenda ❌ ${e?.message ?? String(e)}`);
+    }
   }
+  
 
   function repor() {
     setSelectedKeys(new Set());
@@ -329,7 +383,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(CODE_STYLES_STORAGE_KEY, JSON.stringify(codeStyles));
-    } catch {}
+    } catch { }
   }, [codeStyles]);
 
   const dynamicCodeCss = useMemo(() => buildCodeCss(codeStyles), [codeStyles]);
