@@ -194,6 +194,97 @@ router.get('/hierarquia', async (req, res) => {
   }
 });
 
+/* =========================
+   NEGÓCIO: Funcionários (LIST)
+========================= */
+
+// GET /api/funcionarios?q=...&funcao=SUEIN&ativo=1&limit=200
+router.get("/funcionarios", async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const funcao = String(req.query.funcao ?? "").trim();
+    const ativoRaw = String(req.query.ativo ?? "").trim(); // "1" | "0" | ""
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 1000);
+
+    const pool = await getPool();
+    const r = pool.request();
+
+    r.input("top", sql.Int, limit);
+
+    // filtros opcionais
+    const ativo =
+      ativoRaw === "" ? null : (ativoRaw === "1" ? 1 : (ativoRaw === "0" ? 0 : null));
+    r.input("ativo", sql.Bit, ativo);
+
+    r.input("funcao", sql.NVarChar(50), funcao || null);
+
+    const qLike = q ? `%${q}%` : null;
+    r.input("q", sql.NVarChar(200), q || null);
+    r.input("qLike", sql.NVarChar(220), qLike);
+
+    const rs = await r.query(`
+      SELECT TOP (@top)
+        Chave,
+        Matricula,
+        Nome,
+        Funcao,
+        Ativo,
+        HierarquiaCodigoOriginal,
+        HierarquiaTipoSugerido,
+        HierarquiaObservacao,
+        CriadoEm,
+        AtualizadoEm
+      FROM dbo.Funcionarios
+      WHERE
+        (@ativo IS NULL OR Ativo = @ativo)
+        AND (@funcao IS NULL OR Funcao = @funcao)
+        AND (
+          @q IS NULL
+          OR Chave LIKE @qLike
+          OR Matricula LIKE @qLike
+          OR Nome LIKE @qLike
+          OR Funcao LIKE @qLike
+        )
+      ORDER BY Nome;
+    `);
+
+    res.json(rs.recordset || []);
+  } catch (err) {
+    res.status(500).json({ error: "FUNCIONARIOS_LIST", message: err.message });
+  }
+});
+
+// GET /api/funcionarios/byKeys?chaves=FRCF,NVBN,...
+router.get("/funcionarios/byKeys", async (req, res) => {
+  try {
+    const chaves = parseChavesList(req.query.chaves);
+    if (!chaves.length) return res.json([]);
+
+    const pool = await getPool();
+    const r = pool.request();
+
+    r.input("chaves", sql.NVarChar(sql.MAX), chaves.join(","));
+
+    const rs = await r.query(`
+      SELECT
+        Chave,
+        Matricula,
+        Nome,
+        Funcao,
+        Ativo
+      FROM dbo.Funcionarios
+      WHERE Chave IN (
+        SELECT LTRIM(RTRIM(value))
+        FROM string_split(@chaves, ',')
+      )
+      ORDER BY Nome;
+    `);
+
+    res.json(rs.recordset || []);
+  } catch (err) {
+    res.status(500).json({ error: "FUNCIONARIOS_BY_KEYS", message: err.message });
+  }
+});
 
 
 /* =========================

@@ -1,4 +1,21 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
+
+function normalizeText(v) {
+  return String(v ?? "").toLowerCase();
+}
+
+function matchesQuery(f, q) {
+  if (!q) return true;
+  const term = normalizeText(q.trim());
+  if (!term) return true;
+
+  return (
+    normalizeText(f?.Nome).includes(term) ||
+    normalizeText(f?.Chave).includes(term) ||
+    normalizeText(f?.Matricula).includes(term) ||
+    normalizeText(f?.Funcao).includes(term)
+  );
+}
 
 export default memo(function EmployeeList({
   q,
@@ -12,36 +29,36 @@ export default memo(function EmployeeList({
   clearSelection,
   onRefreshEmployees,
   onRepor,
+
+  // grupos
+  groups = [],
+  activeGroup = null,
+  onPickGroup,
+  groupLoading = false,
+  groupError = "",
 }) {
-  // Função para filtrar os funcionários por chave, nome, matrícula, função e grupo
-  const filterByGroup = (searchTerm) => {
-    return funcionarios.filter(f => {
-      // Convertendo para minúsculas para permitir pesquisa sem diferenciar maiúsculas/minúsculas
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      const nomeMatch = f.Nome.toLowerCase().includes(lowerSearchTerm);
-      const chaveMatch = f.Chave.toLowerCase().includes(lowerSearchTerm);
-      const matriculaMatch = f.Matricula.toLowerCase().includes(lowerSearchTerm);
-      const funcaoMatch = f.Funcao.toLowerCase().includes(lowerSearchTerm);
+  const list = Array.isArray(funcionarios) ? funcionarios : [];
 
-      // Filtragem por grupo
-      const grupoMatch = 
-        (searchTerm === "SUEIN" && ['TMA', 'TMI', 'TME'].includes(f.Funcao)) ||
-        (searchTerm === "TMM" && f.Funcao === 'TMM') ||
-        (searchTerm === "SUPROD" && ['TMI', 'TME', 'TMA'].includes(f.Funcao)) ||
-        (searchTerm === "SUEMB" && ['TLT', 'TES'].includes(f.Funcao)) ||
-        (searchTerm === "COMAN" && ['SUEIN', 'SUMEC'].includes(f.Funcao)) ||
-        (searchTerm === "COEMB" && f.Funcao === "SUEMB") ||
-        (searchTerm === "COPROD" && f.Funcao === "SUPROD") ||
-        (searchTerm === "GEOP" && f.Funcao === "GEOP") ||
-        (searchTerm === "GEPLAT" && f.Funcao === "GEPLAT");
-
-      // Retorna verdadeiro se qualquer parte corresponder ao termo de pesquisa
-      return nomeMatch || chaveMatch || matriculaMatch || funcaoMatch || grupoMatch;
-    });
-  };
-
-  // Filtra os funcionários com base no termo de busca
-  const filteredFuncionarios = filterByGroup(q);
+  const filtered = useMemo(() => {
+    const qTrim = String(q ?? "").trim();
+  
+    // 1) começa com a lista inteira
+    let base = list;
+  
+    // 2) aplica busca primeiro
+    if (qTrim) base = base.filter((f) => matchesQuery(f, qTrim));
+  
+    // 3) só aplica "somente selecionados" no modo normal (activeGroup === null)
+    if (somenteSelecionados && activeGroup === null) {
+      base = base.filter((f) => {
+        const k = String(f?.Chave ?? "").trim();
+        return k && selectedKeys.has(k);
+      });
+    }
+  
+    return base;
+  }, [list, q, somenteSelecionados, selectedKeys, activeGroup]);
+  
 
   return (
     <aside className="sidebar">
@@ -51,6 +68,40 @@ export default memo(function EmployeeList({
           Selecionados: <b>{selectedKeys.size}</b>
         </div>
       </div>
+
+      {/* Grupos (modo hierarquia) */}
+      <div className="sidebar-actions" style={{ gap: 6, flexWrap: "wrap" }}>
+        <button
+          className="btn btn-secondary"
+          type="button"
+          onClick={() => onPickGroup?.(null)}
+          title="Voltar ao modo normal"
+          style={{ fontWeight: activeGroup === null ? 800 : 600 }}
+          disabled={groupLoading}
+        >
+          TODOS
+        </button>
+
+        {groups.map((g) => (
+          <button
+            key={g}
+            className="btn btn-secondary"
+            type="button"
+            onClick={() => onPickGroup?.(g)}
+            style={{ fontWeight: activeGroup === g ? 800 : 600 }}
+            disabled={groupLoading}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+
+      {groupLoading ? <div className="small">Carregando grupo…</div> : null}
+      {groupError ? (
+        <div className="small" style={{ color: "crimson" }}>
+          {groupError}
+        </div>
+      ) : null}
 
       <div className="sidebar-search">
         <label>Buscar (nome / chave / matrícula / função)</label>
@@ -62,32 +113,19 @@ export default memo(function EmployeeList({
       </div>
 
       <div className="sidebar-actions">
-        <button
-          className="btn btn-secondary"
-          onClick={() => onRefreshEmployees?.()}
-          type="button"
-        >
+        <button className="btn btn-secondary" onClick={onRefreshEmployees} type="button">
           Atualizar funcionários
         </button>
-
-        <button
-          className="btn btn-secondary"
-          onClick={() => onRepor?.()}
-          type="button"
-        >
+        <button className="btn btn-secondary" onClick={onRepor} type="button">
           Repor (limpa grid)
         </button>
       </div>
 
       <div className="sidebar-actions">
-        <button className="btn btn-secondary" onClick={selectAll} type="button">
+        <button className="btn btn-secondary" onClick={selectAll} type="button" disabled={!list.length}>
           Selecionar todos
         </button>
-        <button
-          className="btn btn-secondary"
-          onClick={clearSelection}
-          type="button"
-        >
+        <button className="btn btn-secondary" onClick={clearSelection} type="button" disabled={selectedKeys.size === 0}>
           Limpar seleção
         </button>
       </div>
@@ -104,37 +142,25 @@ export default memo(function EmployeeList({
       </div>
 
       <div className="func-list">
-        {filteredFuncionarios.map((f) => {
-          const k = String(f.Chave ?? "").trim();
-          const nome = String(f.Nome ?? "").trim();
-          const mat = String(f.Matricula ?? "").trim();
-          const func = String(f.Funcao ?? "").trim();
+        {filtered.map((f) => {
+          const k = String(f?.Chave ?? "").trim();
+          const nome = String(f?.Nome ?? "").trim();
+          const mat = String(f?.Matricula ?? "").trim();
+          const func = String(f?.Funcao ?? "").trim();
           const checked = k ? selectedKeys.has(k) : false;
 
-          // Aplica classes para identificar visualmente grupos
-          let rowClass = "";
-          if (['TMA', 'TMI', 'TME'].includes(func)) {
-            rowClass = 'suein'; // SUEIN
-          } else if (func === "TMM") {
-            rowClass = 'sumec'; // SUMEC
-          } else if (['TLT', 'TES'].includes(func)) {
-            rowClass = 'suemb'; // SUEMB
-          } else if (['TMI', 'TME', 'TMA'].includes(func)) {
-            rowClass = 'suem'; // Técnicos de operação (subordinados a SUPROD)
-          }
-
           return (
-            <div className={`func-item ${rowClass}`} key={k || `${nome}-${mat}-${func}`}>
+            <div className="func-item" key={k || `${nome}-${mat}-${func}`}>
               <input
                 type="checkbox"
                 checked={checked}
                 disabled={!k}
                 onChange={() => k && toggleSelectKey(k)}
               />
+
               <div className="func-meta">
                 <div className="func-name">
-                  {nome || "(sem nome)"}{" "}
-                  {k ? <span className="func-chip">{k}</span> : null}
+                  {nome || "(sem nome)"} {k ? <span className="func-chip">{k}</span> : null}
                 </div>
                 <div className="func-sub">
                   {mat ? `Matrícula: ${mat}` : "—"} {func ? `• ${func}` : ""}
@@ -143,6 +169,12 @@ export default memo(function EmployeeList({
             </div>
           );
         })}
+
+        {filtered.length === 0 ? (
+          <div className="small" style={{ padding: 8, opacity: 0.75 }}>
+            Nenhum funcionário para exibir.
+          </div>
+        ) : null}
       </div>
     </aside>
   );

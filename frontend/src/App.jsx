@@ -1,324 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import EmployeeList from "./components/EmployeeList.jsx";
 import ScheduleGrid from "./components/ScheduleGrid.jsx";
 import LegendStyleEditor from "./components/LegendStyleEditor.jsx";
+
 import { useDebounce } from "./hooks/useDebounce.js";
+import { useFuncionarios } from "./hooks/useFuncionarios.js";
+import { useGroupEmployees } from "./hooks/useGroupEmployees.js";
+
 import { apiGet, apiPost } from "./lib/api.js";
+import { normalizeCalendar, isoAddDays, isoToday, pickDateFromObject, brToIso, isIsoLike } from "./lib/dateUtils.js";
+import { setDiff, mapMerge, purgeMapByKeysPrefix, purgeSetByKeysPrefix } from "./lib/collectionUtils.js";
+import { CODE_STYLES_STORAGE_KEY, DEFAULT_CODE_LABELS, DEFAULT_CODE_STYLES, buildCodeCss, normalizeCode } from "./lib/codeStyles.js";
 
 import "./App.css";
 import "./Grid.css";
 import "./Cells.css";
 import "./CodeStyles.css";
 
-/* ===== datas ===== */
-function toIsoDate(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-function isoToday() {
-  return toIsoDate(new Date());
-}
-function isoAddDays(iso, days) {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return toIsoDate(d);
-}
-function isoRange(inicio, fim) {
-  const a = new Date(inicio + "T00:00:00");
-  const b = new Date(fim + "T00:00:00");
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return [];
-  const out = [];
-  const cur = new Date(a);
-  while (cur <= b) {
-    out.push(toIsoDate(cur));
-    cur.setDate(cur.getDate() + 1);
-    if (out.length > 800) break;
-  }
-  return out;
-}
-function isIsoLike(s) {
-  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s);
-}
-function brToIso(s) {
-  const m =
-    typeof s === "string" ? s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/) : null;
-  if (!m) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
-function pickDateFromObject(obj) {
-  if (!obj || typeof obj !== "object") return null;
-  return (
-    obj.Data ||
-    obj.data ||
-    obj.Dia ||
-    obj.dia ||
-    obj.Date ||
-    obj.date ||
-    obj.Value ||
-    obj.value ||
-    null
-  );
-}
-function normalizeCalendar(rawCalendar, inicio, fim) {
-  const fallback = isoRange(inicio, fim);
-  if (!Array.isArray(rawCalendar) || rawCalendar.length === 0) return fallback;
-
-  const normalized = [];
-  for (const item of rawCalendar) {
-    let v = null;
-    if (typeof item === "string") v = item;
-    else if (item && typeof item === "object") v = pickDateFromObject(item);
-
-    if (!v) continue;
-    if (typeof v === "string" && v.includes("T")) v = v.slice(0, 10);
-
-    if (isIsoLike(v)) normalized.push(v.slice(0, 10));
-    else {
-      const br = brToIso(v);
-      if (br) normalized.push(br);
-      else {
-        const d = new Date(v);
-        if (!Number.isNaN(d.getTime())) normalized.push(toIsoDate(d));
-      }
-    }
-  }
-
-  const uniq = Array.from(new Set(normalized)).sort();
-  return uniq.length ? uniq : fallback;
-}
-
-/* ===== helpers Set/Map ===== */
-// Defaults (sigla -> significado)
-const DEFAULT_CODE_LABELS = {
-  EM: "EMBARCADO",
-  L: "LICENÇA",
-  TR: "TREINAMENTO",
-  EVT: "EVENTO/MISSÃO",
-  B: "BASE",
-  HO: "HOME OFFICE",
-  NB: "NÃO MOBILIZADO",
-  PT: "EM TRANSFERÊNCIA",
-  IN: "INTERINO",
-
-  O: "FOLGA",
-  A: "AFASTADO",
-  F: "FÉRIAS",
-  FS: "FINAL DE SEMANA/FERIADO",
-
-  HZH1: "HAZOP Vendor Hull 1",
-  DR3T: "DR30 TS",
-  HZPR: "HAZOP Process",
-  HZH2: "HAZOP Vendor Hull 2",
-  HZH3: "HAZOP Vendor Hull 3",
-  HZUT: "HAZOP Utilities",
-  DR6T: "DR60 TOPSIDE",
-  ANG: "ANGRA",
-  HAY: "HAYANG",
-
-  PUN: "PUNE",
-  NTG: "NANTONG",
-  SGP: "SINGAPURA",
-
-  YNT: "YANTAI",
-  BT: "BATAM",
-  HOE: "HOME OFFICE EXTRA",
-};
-
-function setDiff(a, b) {
-  const out = new Set();
-  for (const x of a) if (!b.has(x)) out.add(x);
-  return out;
-}
-function mapMerge(oldMap, newMap) {
-  const m = new Map(oldMap);
-  for (const [k, v] of newMap.entries()) m.set(k, v);
-  return m;
-}
-function purgeMapByKeysPrefix(map, keys) {
-  if (!keys || keys.length === 0) return map;
-  const prefixes = keys.map((k) => `${k}|`);
-  const out = new Map();
-  for (const [kk, vv] of map.entries()) {
-    let keep = true;
-    for (const p of prefixes) {
-      if (String(kk).startsWith(p)) {
-        keep = false;
-        break;
-      }
-    }
-    if (keep) out.set(kk, vv);
-  }
-  return out;
-}
-function purgeSetByKeysPrefix(set, keys) {
-  if (!keys || keys.length === 0) return set;
-  const prefixes = keys.map((k) => `${k}|`);
-  const out = new Set();
-  for (const kk of set.values()) {
-    let keep = true;
-    for (const p of prefixes) {
-      if (String(kk).startsWith(p)) {
-        keep = false;
-        break;
-      }
-    }
-    if (keep) out.add(kk);
-  }
-  return out;
-}
-
-/* ===== estilos default por código ===== */
-const DEFAULT_CODE_STYLES = {
-  FS: { mode: "solid", bg1: "#92D050", bg2: "", fg: "#000000", bold: true },
-  B: { mode: "solid", bg1: "#00B050", bg2: "", fg: "#000000", bold: true },
-  F: { mode: "solid", bg1: "#FFC000", bg2: "", fg: "#000000", bold: true },
-  YNT: { mode: "solid", bg1: "#FF9900", bg2: "", fg: "#000000", bold: true },
-  HO: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
-  BT: { mode: "solid", bg1: "#00A99D", bg2: "", fg: "#000000", bold: true },
-  PY: { mode: "solid", bg1: "#00B0F0", bg2: "", fg: "#000000", bold: true },
-  ANG: { mode: "solid", bg1: "#FFFF00", bg2: "", fg: "#000000", bold: true },
-  SGP: { mode: "solid", bg1: "#FF4D4D", bg2: "", fg: "#000000", bold: true },
-  NTG: { mode: "solid", bg1: "#FF66CC", bg2: "", fg: "#000000", bold: true },
-  TR: { mode: "solid", bg1: "#F8CBAD", bg2: "", fg: "#000000", bold: true },
-  V: { mode: "solid", bg1: "#D9E1F2", bg2: "", fg: "#000000", bold: true },
-  O: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
-  OH: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
-  A: { mode: "solid", bg1: "#C00000", bg2: "", fg: "#FFFFFF", bold: true },
-  EM: { mode: "solid", bg1: "#B4C6E7", bg2: "", fg: "#000000", bold: true },
-  EVT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-
-  DR3T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  DR6T: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  HZH1: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  HZH2: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  HZH3: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  HZPR: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  HZUT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  PUN: {
-    mode: "gradient",
-    bg1: "#C00000",
-    bg2: "#00B0F0",
-    fg: "#FFFFFF",
-    bold: true,
-  },
-  HOE: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  IN: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  IO: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  L: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  NB: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  PT: { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-  TUY: { mode: "solid", bg1: "#D9D9D9", bg2: "", fg: "#000000", bold: true },
-  "0": { mode: "solid", bg1: "#FFFFFF", bg2: "", fg: "#000000", bold: true },
-};
-
-function normalizeCode(code) {
-  const c = String(code ?? "").trim();
-  if (!c) return "";
-  return c;
-}
-
-function buildCodeCss(styleMap) {
-  const entries = Object.entries(styleMap || {});
-  const lines = [];
-
-  for (const [rawCode, st] of entries) {
-    const code = normalizeCode(rawCode);
-    if (!code) continue;
-
-    const mode = st?.mode === "gradient" ? "gradient" : "solid";
-    const bg1 = st?.bg1 || "#ffffff";
-    const bg2 = st?.bg2 || "#ffffff";
-    const fg = st?.fg || "#000000";
-    const bold = !!st?.bold;
-
-    const borderW = Number.isFinite(Number(st?.borderW))
-      ? Math.max(0, Math.min(8, Number(st.borderW)))
-      : 0;
-    const borderC = st?.borderC || "#000000";
-    const inset =
-      borderW > 0
-        ? `box-shadow: inset 0 0 0 ${borderW}px ${borderC} !important;`
-        : "";
-
-    const selector = `.code-${CSS.escape(code)}`;
-    const background =
-      mode === "gradient"
-        ? `linear-gradient(to bottom, ${bg1} 0%, ${bg2} 100%)`
-        : `${bg1}`;
-
-    lines.push(
-      `${selector}{background:${background} !important;color:${fg} !important;font-weight:${
-        bold ? 800 : 600
-      } !important;${inset}}`
-    );
-  }
-
-  return lines.join("\n");
-}
-
 export default function App() {
+  const GROUPS = ["SUEIN", "SUMEC", "SUPROD", "SUEMB"];
+
+  // ✅ preencha com seus supervisores (SQL: WHERE Funcao='...') — já coloquei SUEIN
+  const FALLBACK_SUPERVISORS_BY_GROUP = useMemo(
+    () => ({
+      SUEIN: ["FRCF", "NVBN", "RWEU", "WVY4", "YT3I"],
+      SUMEC: [],
+      SUPROD: [],
+      SUEMB: [],
+    }),
+    []
+  );
+
+  // ===== status/back-end =====
   const [status, setStatus] = useState("verificando...");
   const [backendOk, setBackendOk] = useState(false);
-
-  const today = useRef(isoToday());
-  const [inicio, setInicio] = useState(isoAddDays(today.current, -7));
-  const [fim, setFim] = useState(isoAddDays(today.current, 21));
-
-  const [q, setQ] = useState("");
-  const qDebounced = useDebounce(q, 250);
-
-  const [somenteSelecionados, setSomenteSelecionados] = useState(true);
-
-  const [funcionarios, setFuncionarios] = useState([]);
-  const [funcCache, setFuncCache] = useState(() => new Map());
-
-  const [selectedKeys, setSelectedKeys] = useState(new Set());
-  const [gridKeys, setGridKeys] = useState(new Set());
-
-  const [rawCalendar, setRawCalendar] = useState([]);
-  const [legenda, setLegenda] = useState([]);
-  const [agendaMap, setAgendaMap] = useState(new Map());
-
-  const [deletedCells, setDeletedCells] = useState(new Set());
-  const [rowOrder, setRowOrder] = useState([]);
-
-  const [sort, setSort] = useState({ col: null, dir: null });
-  function cycleSort(col) {
-    setSort((prev) => {
-      if (prev.col !== col) return { col, dir: "asc" };
-      if (prev.dir === "asc") return { col, dir: "desc" };
-      return { col: null, dir: null };
-    });
-  }
-  function clearSort() {
-    setSort({ col: null, dir: null });
-  }
-
-  const [styleEditorOpen, setStyleEditorOpen] = useState(false);
-  const [styleEditorCode, setStyleEditorCode] = useState("");
-
-  const [codeStyles, setCodeStyles] = useState(() => {
-    try {
-      const raw = localStorage.getItem("agendaP83.codeStyles.v1");
-      if (!raw) return DEFAULT_CODE_STYLES;
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_CODE_STYLES, ...(parsed || {}) };
-    } catch {
-      return DEFAULT_CODE_STYLES;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("agendaP83.codeStyles.v1", JSON.stringify(codeStyles));
-    } catch {
-      // ignore
-    }
-  }, [codeStyles]);
-
-  const dynamicCodeCss = useMemo(() => buildCodeCss(codeStyles), [codeStyles]);
 
   useEffect(() => {
     fetch("/api/health")
@@ -333,28 +49,102 @@ export default function App() {
       });
   }, []);
 
-  async function loadFuncionarios() {
-    const params = new URLSearchParams();
-    if (qDebounced.trim()) params.set("q", qDebounced.trim());
-    const data = await apiGet(`/api/funcionarios?${params.toString()}`);
-    const list = Array.isArray(data) ? data : [];
-    setFuncionarios(list);
+  // ===== datas =====
+  const today = useRef(isoToday());
+  const [inicio, setInicio] = useState(isoAddDays(today.current, -7));
+  const [fim, setFim] = useState(isoAddDays(today.current, 21));
 
-    setFuncCache((prev) => {
-      const next = new Map(prev);
-      for (const f of list) {
-        const k = String(f?.Chave ?? "").trim();
-        if (k) next.set(k, f);
-      }
+  // ===== busca/lateral =====
+  const [q, setQ] = useState("");
+  const qDebounced = useDebounce(q, 250);
+  const [somenteSelecionados, setSomenteSelecionados] = useState(false);
+
+  // ===== funcionários (modo normal) =====
+  const {
+    funcionarios,
+    rowOrder,
+    setRowOrder,
+    loadFuncionarios,
+    funcionariosByKey,
+  } = useFuncionarios({ apiGet, backendOk, qDebounced });
+
+  // ===== modo "grupo" (subordinados via hierarquia) =====
+  const {
+    activeGroup,
+    groupEmployees,
+    groupLoading,
+    groupError,
+    pickGroup,
+  } = useGroupEmployees({
+    apiGet,
+    funcionariosByKey,
+    fallbackSupervisorsByGroup: FALLBACK_SUPERVISORS_BY_GROUP,
+  });
+
+  // lista exibida no EmployeeList
+  const listForSidebar = groupEmployees ?? funcionarios;
+
+  // ===== seleção/grid =====
+  const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+  const [gridKeys, setGridKeys] = useState(() => new Set());
+
+  function toggleSelectKey(k) {
+    setSelectedKeys((prev) => {
+      const s = new Set(prev);
+      if (s.has(k)) s.delete(k);
+      else s.add(k);
+      return s;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedKeys(new Set());
+  }
+
+  function selectAllFromSidebar() {
+    const keys = listForSidebar
+      .map((f) => String(f?.Chave ?? "").trim())
+      .filter(Boolean);
+
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) next.add(k);
       return next;
     });
+  }
 
-    setRowOrder((prev) => {
-      const keys = list.map((f) => String(f.Chave ?? "").trim()).filter(Boolean);
-      if (prev.length === 0) return keys;
-      const prevSet = new Set(prev);
-      return [...prev, ...keys.filter((k) => !prevSet.has(k))];
+  function removeFromGrid(k) {
+    setSelectedKeys((prev) => {
+      const s = new Set(prev);
+      s.delete(k);
+      return s;
     });
+  }
+
+  // ✅ ao trocar grupo: limpa seleção e busca; e o hook já limpa a lista imediatamente
+  function handlePickGroup(g) {
+    clearSelection();
+    setQ("");
+    setSomenteSelecionados(false);
+    pickGroup(g);
+  }
+
+  // ===== agenda =====
+  const [rawCalendar, setRawCalendar] = useState([]);
+  const [legenda, setLegenda] = useState([]);
+  const [agendaMap, setAgendaMap] = useState(() => new Map());
+  const [deletedCells, setDeletedCells] = useState(() => new Set());
+
+  const [sort, setSort] = useState({ col: null, dir: null });
+  function cycleSort(col) {
+    setSort((prev) => {
+      if (prev.col !== col) return { col, dir: "asc" };
+      if (prev.dir === "asc") return { col, dir: "desc" };
+      return { col: null, dir: null };
+    });
+  }
+  function clearSort() {
+    setSort({ col: null, dir: null });
   }
 
   async function fetchAgendaForKeys(chaves) {
@@ -374,8 +164,7 @@ export default function App() {
     for (const r of rows) {
       const fk = String(r.FuncionarioChave ?? "").trim();
       let dtRaw = r.Data;
-      let dt =
-        typeof dtRaw === "string" ? dtRaw : pickDateFromObject(dtRaw) ?? "";
+      let dt = typeof dtRaw === "string" ? dtRaw : pickDateFromObject(dtRaw) ?? "";
       if (typeof dt === "string" && dt.includes("T")) dt = dt.slice(0, 10);
       if (!isIsoLike(dt)) {
         const br = brToIso(dt);
@@ -424,6 +213,7 @@ export default function App() {
     setStatus("Reposto ✅ (seleção e grid limpas)");
   }
 
+  // incremental: ao alterar seleção, busca agenda só das chaves novas
   useEffect(() => {
     if (!backendOk) {
       setGridKeys(new Set(selectedKeys));
@@ -457,36 +247,14 @@ export default function App() {
         }
       })();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKeys, backendOk]);
+  }, [selectedKeys, backendOk]); // intencional
 
-  useEffect(() => {
-    if (!backendOk) return;
-    loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendOk, qDebounced]);
-
-  const calendar = useMemo(
-    () => normalizeCalendar(rawCalendar, inicio, fim),
-    [rawCalendar, inicio, fim]
-  );
-
-  const funcionariosByKey = useMemo(() => {
-    const map = new Map(funcCache);
-    for (const f of funcionarios) {
-      const k = String(f?.Chave ?? "").trim();
-      if (k) map.set(k, f);
-    }
-    return map;
-  }, [funcCache, funcionarios]);
+  const calendar = useMemo(() => normalizeCalendar(rawCalendar, inicio, fim), [rawCalendar, inicio, fim]);
 
   const gridKeyList = useMemo(() => Array.from(gridKeys), [gridKeys]);
 
   const orderedKeys = useMemo(() => {
-    const base = rowOrder.length
-      ? rowOrder.filter((k) => gridKeys.has(k))
-      : gridKeyList;
-
+    const base = rowOrder.length ? rowOrder.filter((k) => gridKeys.has(k)) : gridKeyList;
     if (!sort?.col || !sort?.dir) return base;
 
     const dir = sort.dir === "desc" ? -1 : 1;
@@ -518,6 +286,54 @@ export default function App() {
     return orderedKeys.filter((k) => selectedKeys.has(k));
   }, [orderedKeys, selectedKeys, somenteSelecionados]);
 
+  // header info para o grid
+  const headerInfo = useMemo(() => {
+    const days = calendar.map((iso) => {
+      const d = new Date(iso + "T00:00:00");
+      const day = String(d.getDate()).padStart(2, "0");
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const monthLabel = d
+        .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" })
+        .replace(".", "");
+      const isMonthStart = d.getDate() === 1;
+      return { iso, day, isWeekend, monthKey, monthLabel, isMonthStart };
+    });
+
+    const groups = [];
+    for (const item of days) {
+      const last = groups[groups.length - 1];
+      if (!last || last.monthKey !== item.monthKey) {
+        groups.push({ monthKey: item.monthKey, monthLabel: item.monthLabel, count: 1 });
+      } else last.count++;
+    }
+
+    return { days, groups };
+  }, [calendar]);
+
+  // ===== estilos da legenda (persistência local) =====
+  const [styleEditorOpen, setStyleEditorOpen] = useState(false);
+  const [styleEditorCode, setStyleEditorCode] = useState("");
+
+  const [codeStyles, setCodeStyles] = useState(() => {
+    try {
+      const raw = localStorage.getItem(CODE_STYLES_STORAGE_KEY);
+      if (!raw) return DEFAULT_CODE_STYLES;
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_CODE_STYLES, ...(parsed || {}) };
+    } catch {
+      return DEFAULT_CODE_STYLES;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CODE_STYLES_STORAGE_KEY, JSON.stringify(codeStyles));
+    } catch {}
+  }, [codeStyles]);
+
+  const dynamicCodeCss = useMemo(() => buildCodeCss(codeStyles), [codeStyles]);
+
   const legendTags = useMemo(() => {
     return (Array.isArray(legenda) ? legenda : [])
       .slice(0, 48)
@@ -538,74 +354,6 @@ export default function App() {
     }
     return Array.from(set).sort();
   }, [legendTags, codeStyles]);
-
-  const headerInfo = useMemo(() => {
-    const days = calendar.map((iso) => {
-      const d = new Date(iso + "T00:00:00");
-
-      const day = String(d.getDate()).padStart(2, "0");
-      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`;
-      const monthLabel = d
-        .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" })
-        .replace(".", "");
-
-      const isMonthStart = d.getDate() === 1;
-
-      return { iso, day, isWeekend, monthKey, monthLabel, isMonthStart };
-    });
-
-    const groups = [];
-    for (const item of days) {
-      const last = groups[groups.length - 1];
-      if (!last || last.monthKey !== item.monthKey) {
-        groups.push({
-          monthKey: item.monthKey,
-          monthLabel: item.monthLabel,
-          count: 1,
-        });
-      } else last.count++;
-    }
-
-    return { days, groups };
-  }, [calendar]);
-
-  function toggleSelectKey(k) {
-    setSelectedKeys((prev) => {
-      const s = new Set(prev);
-      if (s.has(k)) s.delete(k);
-      else s.add(k);
-      return s;
-    });
-  }
-
-  function removeFromGrid(k) {
-    setSelectedKeys((prev) => {
-      const s = new Set(prev);
-      s.delete(k);
-      return s;
-    });
-  }
-
-  function selectAll() {
-    const keys = funcionarios
-      .map((f) => String(f.Chave ?? "").trim())
-      .filter(Boolean);
-
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      for (const k of keys) next.add(k);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedKeys(new Set());
-  }
 
   function toggleCellDeleted(cellKey) {
     setDeletedCells((prev) => {
@@ -636,43 +384,25 @@ export default function App() {
         <div className="controls">
           <div className="control">
             <label>Início</label>
-            <input
-              type="date"
-              value={inicio}
-              onChange={(e) => setInicio(e.target.value)}
-            />
+            <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
           </div>
 
           <div className="control">
             <label>Fim</label>
-            <input
-              type="date"
-              value={fim}
-              onChange={(e) => setFim(e.target.value)}
-            />
+            <input type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
           </div>
 
-          <div className="controls">
-
-  {/* ✅ NOVO: botão no topo */}
-  <div className="control" style={{ alignSelf: "end" }}>
-    <button
-      type="button"
-      className="btn btn-primary"
-      onClick={carregarAgenda}
-      disabled={!backendOk || selectedKeys.size === 0}
-      title={
-        selectedKeys.size === 0
-          ? "Selecione funcionários para carregar"
-          : "Carregar agenda dos selecionados"
-      }
-    >
-      Carregar agenda
-    </button>
-  </div>
-</div>
-
-
+          <div className="control" style={{ alignSelf: "end" }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={carregarAgenda}
+              disabled={!backendOk || selectedKeys.size === 0}
+              title={selectedKeys.size === 0 ? "Selecione funcionários para carregar" : "Carregar agenda dos selecionados"}
+            >
+              Carregar agenda
+            </button>
+          </div>
         </div>
       </div>
 
@@ -680,26 +410,29 @@ export default function App() {
         <EmployeeList
           q={q}
           setQ={setQ}
-          funcionarios={funcionarios}
+          funcionarios={listForSidebar}
           selectedKeys={selectedKeys}
           toggleSelectKey={toggleSelectKey}
           somenteSelecionados={somenteSelecionados}
           setSomenteSelecionados={setSomenteSelecionados}
-          selectAll={selectAll}
+          selectAll={selectAllFromSidebar}
           clearSelection={clearSelection}
-          onRefreshEmployees={loadFuncionarios}
-          onLoadAgenda={carregarAgenda}
+          onRefreshEmployees={() =>
+            loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"))
+          }
           onRepor={repor}
+          groups={GROUPS}
+          activeGroup={activeGroup}
+          onPickGroup={handlePickGroup}
+          groupLoading={groupLoading}
+          groupError={groupError}
         />
 
         <main className="content">
           <div className="content-header">
-            <div className="h">
-              Escala ({calendar.length} dias) — Linhas: {visibleKeys.length}
-            </div>
+            <div className="h">Escala ({calendar.length} dias) — Linhas: {visibleKeys.length}</div>
             <div className="status">
-              Dica: <b>Alt+Clique</b> numa célula = excluir/reincluir (local). •
-              Arraste ⠿ • × remove • Duplo clique = editar
+              Dica: <b>Alt+Clique</b> numa célula = excluir/reincluir (local). • Arraste ⠿ • × remove • Duplo clique = editar
             </div>
           </div>
 
@@ -707,9 +440,7 @@ export default function App() {
             <span>Legenda:</span>
 
             {legendTags.length === 0 ? (
-              <span className="legend-muted">
-                (carregue agenda para ver legenda)
-              </span>
+              <span className="legend-muted">(carregue agenda para ver legenda)</span>
             ) : (
               <>
                 {legendTags.map((t) => (
@@ -728,18 +459,14 @@ export default function App() {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      const first = legendTags[0]?.codigo || "FS";
-                      openStyleEditorFor(first);
-                    }}
+                    onClick={() => openStyleEditorFor(legendTags[0]?.codigo || "FS")}
                   >
                     Editar estilos…
                   </button>
 
                   {unknownCodes.length > 0 ? (
                     <span className="legend-warn">
-                      Sem estilo: <b>{unknownCodes.join(", ")}</b> (clique no
-                      código para ajustar)
+                      Sem estilo: <b>{unknownCodes.join(", ")}</b>
                     </span>
                   ) : null}
                 </div>
@@ -791,10 +518,8 @@ export default function App() {
         onCreateMissing={(raw) => {
           const c = normalizeCode(raw);
           if (!c) return;
-
           setCodeStyles((prev) => {
             if (prev?.[c]) return prev;
-
             return {
               ...prev,
               [c]: {
