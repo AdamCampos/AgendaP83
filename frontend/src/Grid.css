@@ -1,196 +1,273 @@
 /* Grid.css — grid (scroll, sticky, meses, drag, etc.) */
 
+:root{
+  --weekend-text: #b91c1c;
+
+  /* premium apenas nas colunas iniciais */
+  --staff-radius: 10px;
+  --staff-outline: 2px;             /* “gap” visual sem fenda */
+  --staff-outline-bg: #ffffff;      /* cor do “gap” */
+}
+
 /* wrapper scroll */
 .grid-wrap{
-    overflow:auto;
-    height:100%;
-    background:#fff;
-    scrollbar-gutter: stable both-edges;
-  }
-  
-  /* “gutter real” */
-  .grid-inner{
-    display:inline-block;
-    padding-right: 18px;
-    padding-bottom: 18px;
-  }
-  
-  table.grid{
-    border-collapse:collapse;
-    table-layout: fixed;
-    width:max-content;
-    min-width: 1200px;
-    font-size:12px;
-  }
-  
-  /* células */
-  .grid th, .grid td{
-    border:1px solid var(--grid-border);
-    padding:0;
-    height:22px;
-    text-align:center;
-    vertical-align:middle;
-    white-space:nowrap;
-    font-size:12px;
-    line-height:1;
-  }
-  
-  /* headers sticky (top) */
-  .grid thead th{
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    background: var(--head);
-    font-weight:800;
-  }
-  
-  .grid thead tr:nth-child(2) th{
-    top: 22px;
-    background: var(--head2);
-    z-index: 29;
-    font-weight:700;
-  }
-  
-  /* larguras */
-  .col-funcao{ width:var(--w-funcao); text-align:left; padding-left:8px; }
-  .col-matricula{ width:var(--w-matricula); }
-  .col-nome{ width:var(--w-nome); text-align:left; padding-left:8px; }
-  .col-chave{ width:var(--w-chave); font-weight:900; }
-  .col-quant{ width:var(--w-quant); }
-  
-  .day-header{ width:24px; font-weight:900; }
-  .day{ width:24px; font-weight:900; }
-  .day.empty{ color:#9ca3af; font-weight:500; }
-  
-  /* weekend só no header e célula vazia */
-  .day-header.weekend{ background: var(--weekend) !important; }
-  .day.weekend.empty{ background: var(--weekend) !important; }
-  
-  /* ===========================
-     ✅ CONGELAR COLUNAS (FIX)
-     =========================== */
-  
-  /* offsets das colunas sticky */
-  .sticky-left  { left: 0; }
-  .sticky-left2 { left: var(--w-funcao); }
-  .sticky-left3 { left: calc(var(--w-funcao) + var(--w-matricula)); }
-  .sticky-left4 { left: calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome)); }
-  .sticky-left5 { left: calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome) + var(--w-chave)); }
-  
-  /* ✅ sticky no BODY: precisa de background + z-index alto
-     senão o conteúdo rolável passa por cima (seu problema atual) */
-  .grid tbody .sticky-left,
-  .grid tbody .sticky-left2,
-  .grid tbody .sticky-left3,
-  .grid tbody .sticky-left4,
-  .grid tbody .sticky-left5{
-    position: sticky;
-    z-index: 60;              /* alto para cobrir células roláveis */
-    background: #fff;         /* OBRIGATÓRIO para não “vazar” conteúdo atrás */
-  }
-  
-  /* ✅ sticky no THEAD: acima do body */
-  .grid thead .sticky-left,
-  .grid thead .sticky-left2,
-  .grid thead .sticky-left3,
-  .grid thead .sticky-left4,
-  .grid thead .sticky-left5{
-    position: sticky;
-    z-index: 80;              /* acima do body */
-    background: var(--head);  /* mantém aparência do header */
-  }
-  
-  /* ✅ sombra/linha na última sticky (efeito Excel e evita sensação de “sobrepor”) */
-  .grid tbody .sticky-left5,
-  .grid thead .sticky-left5{
-    box-shadow: var(--sticky-shadow);
-  }
-  
-  /* ===========================
-     Meses / separadores
-     =========================== */
-  .month-band{
-    background:#e5e7eb !important;
-    font-weight:900;
-    text-transform:lowercase;
-    letter-spacing:.3px;
-    border-left: var(--month-sep-w) solid var(--month-sep) !important;
-    border-right: var(--month-sep-w) solid var(--month-sep) !important;
-    z-index: 35;
-  }
-  .day-header.month-start{
-    border-left: var(--month-sep-w) solid var(--month-sep) !important;
-  }
-  .day.month-start{
-    border-left: var(--month-sep-w) solid var(--month-sep) !important;
-  }
-  
-  /* drag handle */
-  .drag-handle-cell{ display:flex; align-items:center; gap:8px; }
-  .drag-handle{
-    display:inline-flex;
-    width:20px;
-    height:20px;
-    align-items:center;
-    justify-content:center;
-    border:1px solid var(--grid-border);
-    border-radius:6px;
-    background:#fff;
-  
-    cursor:grab;
-    user-select:none;
-    touch-action:none;   /* ⭐ ESSENCIAL para o DnD funcionar */
-  }
-  
-  .drag-handle:active{
-    cursor:grabbing;
-  }
-  
-  .drag-handle:active{ cursor:grabbing; }
-  
-  tr[data-dragging="1"] td{
-    box-shadow: 0 8px 20px rgba(17,24,39,0.12);
-  }
-  
-  /* remover */
-  .row-key{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:8px;
-    padding:0 6px;
-  }
-  .row-remove{
-    height:18px;
-    width:18px;
-    border-radius:6px;
-    border:1px solid var(--grid-border);
-    background:#fff;
-    cursor:pointer;
-    line-height:0;
-    font-size:14px;
-    font-weight:900;
-  }
-  .row-remove:hover{ background:#f3f4f6; }
-  
-  .row-main{
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  
-  /* th ordenável */
-  .th-sort{
-    cursor:pointer;
-    user-select:none;
-  }
-  .th-sort:hover{
-    background:#e9eefc;
-  }
-  
-  /* exclusão local */
-  .day.deleted{
-    opacity:.25;
-    text-decoration: line-through;
-    filter: grayscale(.3);
-  }
-  
+  overflow:auto;
+  height:100%;
+  background:#fff;
+  scrollbar-gutter: stable both-edges;
+}
+
+/* “gutter real” */
+.grid-inner{
+  display:inline-block;
+  padding-right:18px;
+  padding-bottom:18px;
+}
+
+/* tabela */
+table.grid{
+  border-collapse:collapse;
+  table-layout:fixed;
+  width:max-content;
+  min-width:1200px;
+  font-size:12px;
+}
+
+/* células base (grid normal) */
+.grid th,
+.grid td{
+  border:1px solid var(--grid-border);
+  padding:0;
+  height:22px;
+  text-align:center;
+  vertical-align:middle;
+  white-space:nowrap;
+  font-size:12px;
+  line-height:1;
+  background:transparent;
+}
+
+/* headers sticky (top) */
+.grid thead th{
+  position:sticky;
+  top:0;
+  z-index:30;
+  background:var(--head);
+  font-weight:800;
+  background-clip:padding-box;
+}
+
+.grid thead tr:nth-child(2) th{
+  top:22px;
+  background:var(--head2);
+  z-index:29;
+  font-weight:700;
+}
+
+/* larguras */
+.col-funcao{ width:var(--w-funcao); text-align:left; padding-left:8px; }
+.col-matricula{ width:var(--w-matricula); }
+.col-nome{ width:var(--w-nome); text-align:left; padding-left:8px; }
+.col-chave{ width:var(--w-chave); font-weight:900; }
+.col-quant{ width:var(--w-quant); }
+
+.day-header{ width:24px; font-weight:900; }
+.day{ width:24px; font-weight:900; }
+.day.empty{ color:#9ca3af; font-weight:500; }
+
+/* weekend só no header e célula vazia */
+.day-header.weekend{
+  background:var(--weekend) !important;
+  color:var(--weekend-text) !important;
+}
+.day.weekend.empty{
+  background:var(--weekend) !important;
+}
+
+/* ===========================
+   CONGELAR COLUNAS (FIX)
+   =========================== */
+
+/* offsets das colunas sticky */
+.sticky-left{ left:0; }
+.sticky-left2{ left:var(--w-funcao); }
+.sticky-left3{ left:calc(var(--w-funcao) + var(--w-matricula)); }
+.sticky-left4{ left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome)); }
+.sticky-left5{ left:calc(var(--w-funcao) + var(--w-matricula) + var(--w-nome) + var(--w-chave)); }
+
+/* sticky no BODY: opaco + z-index alto */
+.grid tbody .sticky-left,
+.grid tbody .sticky-left2,
+.grid tbody .sticky-left3,
+.grid tbody .sticky-left4,
+.grid tbody .sticky-left5{
+  position:sticky;
+  z-index:60;
+  background:#fff;
+  background-clip:padding-box;
+}
+
+/* sticky no THEAD: acima do body */
+.grid thead .sticky-left,
+.grid thead .sticky-left2,
+.grid thead .sticky-left3,
+.grid thead .sticky-left4,
+.grid thead .sticky-left5{
+  position:sticky;
+  z-index:80;
+  background:var(--head);
+  background-clip:padding-box;
+}
+
+/* segunda linha do header sticky mantém head2 */
+.grid thead tr:nth-child(2) .sticky-left,
+.grid thead tr:nth-child(2) .sticky-left2,
+.grid thead tr:nth-child(2) .sticky-left3,
+.grid thead tr:nth-child(2) .sticky-left4,
+.grid thead tr:nth-child(2) .sticky-left5{
+  background:var(--head2);
+}
+
+/* sombra/linha na última sticky (efeito Excel) */
+.grid tbody .sticky-left5,
+.grid thead .sticky-left5{
+  box-shadow: var(--sticky-shadow);
+}
+
+/* ===========================
+   PREMIUM (SEM FENDAS) — SOMENTE NAS STICKY
+   - usa outline + outline-offset (não cria transparência)
+   - mantém grid normal no restante
+   =========================== */
+
+.grid tbody .sticky-left,
+.grid tbody .sticky-left2,
+.grid tbody .sticky-left3,
+.grid tbody .sticky-left4,
+.grid tbody .sticky-left5,
+.grid thead .sticky-left,
+.grid thead .sticky-left2,
+.grid thead .sticky-left3,
+.grid thead .sticky-left4,
+.grid thead .sticky-left5{
+  /* “gap” visual sem fenda */
+  outline: var(--staff-outline) solid var(--staff-outline-bg);
+  outline-offset: -1px; /* fica “colado” na borda, sem abrir espaço externo */
+
+  /* borda interna elegante */
+  box-shadow: inset 0 0 0 1px rgba(17,24,39,0.10);
+
+  /* evita transparência por radius em cima de sticky */
+  border-radius: 0;
+}
+
+/* arredonda apenas o canto esquerdo do bloco sticky (seguro) */
+.grid tbody .sticky-left,
+.grid thead .sticky-left,
+.grid thead tr:nth-child(2) .sticky-left{
+  border-radius: var(--staff-radius) 0 0 var(--staff-radius);
+}
+
+/* não arredonda no meio do bloco (evita buracos) */
+.grid tbody .sticky-left2,
+.grid tbody .sticky-left3,
+.grid tbody .sticky-left4,
+.grid tbody .sticky-left5,
+.grid thead .sticky-left2,
+.grid thead .sticky-left3,
+.grid thead .sticky-left4,
+.grid thead .sticky-left5,
+.grid thead tr:nth-child(2) .sticky-left2,
+.grid thead tr:nth-child(2) .sticky-left3,
+.grid thead tr:nth-child(2) .sticky-left4,
+.grid thead tr:nth-child(2) .sticky-left5{
+  border-radius: 0;
+}
+
+/* ===========================
+   Meses / separadores
+   =========================== */
+.month-band{
+  background:#e5e7eb !important;
+  font-weight:900;
+  text-transform:lowercase;
+  letter-spacing:.3px;
+  border-left: var(--month-sep-w) solid var(--month-sep) !important;
+  border-right: var(--month-sep-w) solid var(--month-sep) !important;
+  z-index:35;
+  border-radius:12px;
+}
+
+.day-header.month-start{
+  border-left: var(--month-sep-w) solid var(--month-sep) !important;
+}
+.day.month-start{
+  border-left: var(--month-sep-w) solid var(--month-sep) !important;
+}
+
+/* ===========================
+   Drag handle / DnD
+   =========================== */
+.drag-handle-cell{ display:flex; align-items:center; gap:8px; }
+
+.drag-handle{
+  display:inline-flex;
+  width:20px;
+  height:20px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--grid-border);
+  border-radius:999px;
+  background:#fff;
+  cursor:grab;
+  user-select:none;
+  touch-action:none;
+}
+
+.drag-handle:active{ cursor:grabbing; }
+
+tr[data-dragging="1"] td{
+  box-shadow: 0 8px 20px rgba(17,24,39,0.12);
+}
+
+/* remover */
+.row-key{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:0 6px;
+}
+
+.row-remove{
+  height:18px;
+  width:18px;
+  border-radius:999px;
+  border:1px solid var(--grid-border);
+  background:#fff;
+  cursor:pointer;
+  line-height:0;
+  font-size:14px;
+  font-weight:900;
+}
+
+.row-remove:hover{ background:#f3f4f6; }
+
+.row-main{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* th ordenável */
+.th-sort{
+  cursor:pointer;
+  user-select:none;
+}
+.th-sort:hover{ background:#e9eefc; }
+
+/* exclusão local */
+.day.deleted{
+  opacity:.25;
+  text-decoration: line-through;
+  filter: grayscale(.3);
+}

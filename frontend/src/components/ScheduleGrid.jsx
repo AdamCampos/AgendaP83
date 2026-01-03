@@ -247,16 +247,8 @@ function SortableRow({ id, children, onRemoveRow }) {
 
   const style = {
     transition,
-    ...(isDragging && transform
-      ? { transform: CSS.Transform.toString(transform) }
-      : {}),
+    transform: transform ? CSS.Transform.toString(transform) : undefined, // ✅ aplica sempre
     opacity: isDragging ? 0.9 : 1,
-  };
-
-  const onHandlePointerDown = (e) => {
-    dbg("[HANDLE pointerdown]", { row: id, button: e.button });
-    // ✅ chama o handler do dnd-kit (senão não inicia)
-    listeners?.onPointerDown?.(e);
   };
 
   return (
@@ -264,11 +256,18 @@ function SortableRow({ id, children, onRemoveRow }) {
       <td className="sticky-left col-funcao">
         <div className="drag-handle-cell">
           <span
-            ref={setActivatorNodeRef} // ✅ drag só aqui
+            ref={setActivatorNodeRef}
             className="drag-handle"
             title="Arraste para reordenar"
             {...attributes}
-            onPointerDown={onHandlePointerDown} // ✅ debug + inicia DnD
+            onPointerDown={(e) => {
+              dbg("[HANDLE pointerdown]", { row: id, button: e.button });
+              listeners?.onPointerDown?.(e); // ✅ ESSENCIAL (inicia o DnD)
+            }}
+            onKeyDown={(e) => {
+              listeners?.onKeyDown?.(e);
+            }}
+            style={{ cursor: "grab", opacity: 1 }}
           >
             ⠿
           </span>
@@ -302,6 +301,9 @@ function SortableRow({ id, children, onRemoveRow }) {
     </tr>
   );
 }
+
+
+
 
 
 export default function ScheduleGrid({
@@ -353,6 +355,44 @@ export default function ScheduleGrid({
     for (let i = start; i <= end; i++) s.add(`${a.fk}|${isoList[i]}`);
     return s;
   }
+
+  function reorderRowOrderByVisible(prevRowOrder, visibleKeys, fromKey, toKey) {
+    const from = String(fromKey ?? "");
+    const to = String(toKey ?? "");
+    if (!from || !to || from === to) return prevRowOrder;
+  
+    const vis = (visibleKeys || []).map(String);
+    const visSet = new Set(vis);
+  
+    // ordem visível atual baseada no rowOrder
+    const currentVis = prevRowOrder.map(String).filter((k) => visSet.has(k));
+    const currentSet = new Set(currentVis);
+    for (const k of vis) if (!currentSet.has(k)) currentVis.push(k);
+  
+    const fromIdx = currentVis.indexOf(from);
+    const toIdx = currentVis.indexOf(to);
+    if (fromIdx < 0 || toIdx < 0) return prevRowOrder;
+  
+    const nextVis = currentVis.slice();
+    nextVis.splice(fromIdx, 1);
+    nextVis.splice(toIdx, 0, from);
+  
+    // reescreve o rowOrder preservando tudo fora do visível
+    let i = 0;
+    const next = prevRowOrder.map((k) => {
+      const kk = String(k);
+      if (visSet.has(kk)) return nextVis[i++];
+      return k;
+    });
+  
+    // garante que nenhum visível ficou de fora
+    const nextSet = new Set(next.map(String));
+    for (const k of nextVis) if (!nextSet.has(k)) next.push(k);
+  
+    return next;
+  }
+  
+  
 
   function handleCellClick(cellKey, meta) {
     dbg("[handleCellClick]", { cellKey, meta, anchorCell });
@@ -428,18 +468,12 @@ export default function ScheduleGrid({
     const { active, over } = evt;
     if (!over) return;
     if (active.id === over.id) return;
-
+  
     dbg("[DND dragEnd]", { from: active.id, to: over.id });
-
-    // saiu do sort (porque agora vale a ordem manual)
-    if (sort?.col && sort?.dir) onExitSort?.();
-
-    setRowOrder((prev) => {
-      const oldIndex = prev.indexOf(active.id);
-      const newIndex = prev.indexOf(over.id);
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+  
+    setRowOrder((prev) =>
+      reorderRowOrderByVisible(prev, visibleKeys, active.id, over.id)
+    );
   }
 
   const renderBody = useMemo(() => {
@@ -489,15 +523,15 @@ export default function ScheduleGrid({
       });
 
       return (
-        <SortableRow key={k} id={k} onRemoveRow={onRemoveRow}>
-          {funcao}
-          {mat}
-          {nome}
-          {k}
-          {quant}
-          {cells}
-        </SortableRow>
-      );
+          <SortableRow key={k} id={k} onRemoveRow={onRemoveRow}>
+            {funcao}
+            {mat}
+            {nome}
+            {k}
+            {quant}
+            {cells}
+          </SortableRow>
+        );
     });
   }, [
     visibleKeys,
@@ -523,9 +557,8 @@ export default function ScheduleGrid({
             collisionDetection={closestCenter}
             onDragStart={(evt) => {
               dbg("[DND dragStart]", { id: evt.active?.id });
-              // ao começar a arrastar, sai do sort
-              if (sort?.col && sort?.dir) onExitSort?.();
             }}
+            
             onDragCancel={() => dbg("[DND dragCancel]")}
             onDragEnd={onDragEndRow}
           >

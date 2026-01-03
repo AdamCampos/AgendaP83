@@ -18,6 +18,29 @@ import "./Grid.css";
 import "./Cells.css";
 import "./CodeStyles.css";
 
+function norm(s) {
+  return String(s ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toUpperCase()
+    .trim();
+}
+
+function filterEmployees(list, q) {
+  const term = norm(q);
+  if (!term) return list;
+
+  const tokens = term.split(/[,\s]+/).filter(Boolean);
+
+  return (Array.isArray(list) ? list : []).filter((f) => {
+    const hay = norm(
+      `${f?.Nome ?? ""} ${f?.Chave ?? ""} ${f?.Matricula ?? ""} ${f?.Funcao ?? ""}`
+    );
+    return tokens.every((t) => hay.includes(t));
+  });
+}
+
+
 export default function App() {
   const GROUPS = [
     "SUEIN", "SUMEC", "SUPROD", "SUEMB",
@@ -72,7 +95,7 @@ export default function App() {
     SUPROD: [],
     SUEMB: [],
   };
-  
+
 
   // ===== status/back-end =====
   const [status, setStatus] = useState("verificando...");
@@ -127,7 +150,12 @@ export default function App() {
 
 
   // lista exibida no EmployeeList
-  const listForSidebar = groupEmployees ?? funcionarios;
+  const listForSidebarBase = groupEmployees ?? funcionarios;
+
+  const listForSidebar = useMemo(() => {
+    return filterEmployees(listForSidebarBase, q);
+  }, [listForSidebarBase, q]);
+
 
   // ===== seleção/grid =====
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
@@ -183,11 +211,20 @@ export default function App() {
   const [sort, setSort] = useState({ col: null, dir: null });
   function cycleSort(col) {
     setSort((prev) => {
-      if (prev.col !== col) return { col, dir: "asc" };
-      if (prev.dir === "asc") return { col, dir: "desc" };
-      return { col: null, dir: null };
+      let next;
+      if (prev.col !== col) next = { col, dir: "asc" };
+      else if (prev.dir === "asc") next = { col, dir: "desc" };
+      else next = { col: null, dir: null };
+  
+      if (next.col && next.dir) {
+        setRowOrder((ro) => applySortToRowOrder(ro, next, gridKeys, funcionariosByKey));
+      }
+  
+      return next;
     });
   }
+  
+
   function clearSort() {
     setSort({ col: null, dir: null });
   }
@@ -229,7 +266,7 @@ export default function App() {
 
   async function carregarAgenda() {
     const chaves = Array.from(selectedKeys).filter(Boolean);
-  
+
     if (chaves.length === 0) {
       setAgendaMap(new Map());
       setRawCalendar([]);
@@ -237,24 +274,24 @@ export default function App() {
       setStatus("Selecione funcionários para carregar a agenda.");
       return;
     }
-  
+
     setStatus("Carregando agenda...");
-  
+
     try {
       const { rawCalendar: calRaw, legenda: leg, agendaMap: m, rowsCount } =
         await fetchAgendaForKeys(chaves);
-  
+
       setRawCalendar(calRaw);
       setLegenda(leg);
       setAgendaMap(m);
-  
+
       setStatus(`Agenda carregada ✅ (${rowsCount} eventos)`);
     } catch (e) {
       console.error("Falha ao carregar agenda:", e);
       setStatus(`Falha ao carregar agenda ❌ ${e?.message ?? String(e)}`);
     }
   }
-  
+
 
   function repor() {
     setSelectedKeys(new Set());
@@ -308,32 +345,13 @@ export default function App() {
   const gridKeyList = useMemo(() => Array.from(gridKeys), [gridKeys]);
 
   const orderedKeys = useMemo(() => {
-    const base = rowOrder.length ? rowOrder.filter((k) => gridKeys.has(k)) : gridKeyList;
-    if (!sort?.col || !sort?.dir) return base;
-
-    const dir = sort.dir === "desc" ? -1 : 1;
-    const col = sort.col;
-
-    const getVal = (k) => {
-      const f = funcionariosByKey.get(k) || {};
-      if (col === "Chave") return String(k ?? "");
-      if (col === "Funcao") return String(f.Funcao ?? "");
-      if (col === "Matricula") return String(f.Matricula ?? "");
-      if (col === "Nome") return String(f.Nome ?? "");
-      if (col === "Quant") return String(f.Quant ?? "");
-      return "";
-    };
-
-    const copy = [...base];
-    copy.sort((a, b) => {
-      const va = getVal(a).toLocaleUpperCase("pt-BR");
-      const vb = getVal(b).toLocaleUpperCase("pt-BR");
-      if (va < vb) return -1 * dir;
-      if (va > vb) return 1 * dir;
-      return 0;
-    });
-    return copy;
-  }, [rowOrder, gridKeys, gridKeyList, sort, funcionariosByKey]);
+    const base = rowOrder.length
+      ? rowOrder.filter((k) => gridKeys.has(k))
+      : gridKeyList;
+  
+    return base;
+  }, [rowOrder, gridKeys, gridKeyList]);
+  
 
   const visibleKeys = useMemo(() => {
     if (!somenteSelecionados) return orderedKeys;
@@ -409,6 +427,43 @@ export default function App() {
     return Array.from(set).sort();
   }, [legendTags, codeStyles]);
 
+  function applySortToRowOrder(prevRowOrder, nextSort, gridKeys, funcionariosByKey) {
+    if (!nextSort?.col || !nextSort?.dir) return prevRowOrder;
+  
+    const dir = nextSort.dir === "desc" ? -1 : 1;
+    const col = nextSort.col;
+  
+    const getVal = (k) => {
+      const f = funcionariosByKey.get(k) || {};
+      if (col === "Chave") return String(k ?? "");
+      if (col === "Funcao") return String(f.Funcao ?? "");
+      if (col === "Matricula") return String(f.Matricula ?? "");
+      if (col === "Nome") return String(f.Nome ?? "");
+      if (col === "Quant") return String(f.Quant ?? "");
+      return "";
+    };
+  
+    // pega só os que estão no grid, preservando os demais
+    const inGrid = prevRowOrder.filter((k) => gridKeys.has(k));
+    const inGridSet = new Set(inGrid);
+  
+    // se existir algum key no grid que não está no rowOrder ainda, inclui
+    const missing = Array.from(gridKeys).filter((k) => !inGridSet.has(k));
+    const base = [...inGrid, ...missing];
+  
+    base.sort((a, b) => {
+      const va = getVal(a).toLocaleUpperCase("pt-BR");
+      const vb = getVal(b).toLocaleUpperCase("pt-BR");
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  
+    const rest = prevRowOrder.filter((k) => !gridKeys.has(k));
+    return [...base, ...rest];
+  }
+  
+
   function toggleCellDeleted(cellKey) {
     setDeletedCells((prev) => {
       const s = new Set(prev);
@@ -471,9 +526,10 @@ export default function App() {
           setSomenteSelecionados={setSomenteSelecionados}
           selectAll={selectAllFromSidebar}
           clearSelection={clearSelection}
-          onRefreshEmployees={() =>
-            loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"))
-          }
+          onRefreshEmployees={() => {
+            if (activeGroup) return handlePickGroup(activeGroup);
+            return loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"));
+          }}
           onRepor={repor}
           groups={GROUPS}
           activeGroup={activeGroup}

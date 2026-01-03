@@ -6,7 +6,10 @@
   --head:#f3f4f6;
   --head2:#eef2ff;
   --weekend:#f8fafc;
-
+  --weekend-text: #b91c1c;      /* vermelho da fonte no header */
+  --cell-gap: 3px;             /* “espaço” entre células */
+  --cell-gap-bg: #ffffff;      /* cor do “espaço” (fundo) */
+  --cell-radius: 10px;         /* arredondamento das células */
   --surface:#ffffff;
   --line:#e5e7eb;
 

@@ -1,16 +1,16 @@
 /* Células e legenda (sem cores fixas — cores vêm do CSS dinâmico + CodeStyles.css) */
 
 :root{
-  --code-chip-w: 48px;
-  --code-chip-h: 26px;
-  --code-chip-radius: 6px;
+  --code-chip-h: 28px;
+  --code-chip-radius: 999px; /* ✅ pílula */
 }
 
+/* ===== legenda ===== */
 .legend{
-  padding:6px 14px;
+  padding:10px 14px;
   border-bottom:1px solid var(--line);
   display:flex;
-  gap:6px;
+  gap:10px;                 /* ✅ mais respiro */
   align-items:center;
   flex-wrap:wrap;
   font-size:12px;
@@ -21,7 +21,7 @@
   font-size:12px;
   font-weight:800;
   color:#111827;
-  margin-right:4px;
+  margin-right:2px;
 }
 
 .legend-muted{ color: var(--muted); }
@@ -43,23 +43,32 @@
   align-items:center;
   justify-content:center;
 
-  width: var(--code-chip-w);
   height: var(--code-chip-h);
   border-radius: var(--code-chip-radius);
 
-  border:1px solid var(--grid-border);
-  padding:0;
+  /* chip com cara de UI moderna */
+  border:1px solid var(--line);
+  padding:0 12px;
   font-weight:900;
   font-size:12px;
   line-height:1;
-  background:#fff;
+
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
   user-select:none;
   cursor:pointer;
+  background:#fff;
 }
 
 .tag:hover{
-  outline: 2px solid rgba(37,99,235,.25);
-  outline-offset: 1px;
+  outline: 2px solid rgba(37,99,235,.18);
+  outline-offset: 2px;
+}
+
+/* Botões pequenos na legenda */
+.btn.btn-sm{
+  height:24px;
+  padding:0 10px;
+  font-size:12px;
 }
 
 /* Hover Excel-like na grid: destaca célula */
@@ -72,13 +81,6 @@
 /* Hover na linha (leve) */
 .grid tbody tr:hover td{
   background-image: linear-gradient(rgba(0,0,0,0.03), rgba(0,0,0,0.03));
-}
-
-/* Botões pequenos na legenda */
-.btn.btn-sm{
-  height:24px;
-  padding:0 10px;
-  font-size:12px;
 }
 
 .grid td.day.selected{
