@@ -7,7 +7,7 @@ function normalizeCode(v) {
 export default function CellEditorModal({
   open,
   selectedCount,
-  legenda,          // array do /api/legenda (Codigo/Descricao)
+  legenda,          // array do /api/legenda (Codigo/Descricao ou Codigo/Nome)
   defaultCodigo,    // codigo sugerido (opcional)
   defaultObs,       // obs sugerida (opcional)
   onClose,
@@ -15,13 +15,22 @@ export default function CellEditorModal({
 }) {
   const options = useMemo(() => {
     const list = Array.isArray(legenda) ? legenda : [];
+
     return list
-      .map((x) => ({
-        codigo: normalizeCode(x?.Codigo),
-        desc: String(x?.Descricao ?? "").trim(),
-        tipo: String(x?.Tipo ?? "").trim(),
-        ativo: !!x?.Ativo,
-      }))
+      .map((x) => {
+        const codigo = normalizeCode(x?.Codigo);
+        const desc = String(x?.Descricao ?? x?.Nome ?? "").trim();
+
+        // ✅ Se Ativo não vier, assume true.
+        const ativo = x?.Ativo == null ? true : !!x?.Ativo;
+
+        return {
+          codigo,
+          desc,
+          tipo: String(x?.Tipo ?? "").trim(),
+          ativo,
+        };
+      })
       .filter((x) => x.codigo && x.ativo)
       .sort((a, b) => a.codigo.localeCompare(b.codigo, "pt-BR"));
   }, [legenda]);

@@ -67,13 +67,41 @@ table.grid{
 /* larguras */
 .col-funcao{ width:var(--w-funcao); text-align:left; padding-left:8px; }
 .col-matricula{ width:var(--w-matricula); }
-.col-nome{ width:var(--w-nome); text-align:left; padding-left:8px; }
+
+/* ✅ refatoração correta: a coluna não “carrega” padding; o conteúdo semântico carrega */
+.col-nome{ width:var(--w-nome); text-align:left; padding:0; }
+
 .col-chave{ width:var(--w-chave); font-weight:900; }
 .col-quant{ width:var(--w-quant); }
 
 .day-header{ width:24px; font-weight:900; }
 .day{ width:24px; font-weight:900; }
 .day.empty{ color:#9ca3af; font-weight:500; }
+
+/* ===== Nome com LED (coluna Nome) ===== */
+.name-cell{
+  display:flex;
+  align-items:center;
+  gap:8px;
+
+  height:22px;           /* casa com td */
+  padding:0 8px;         /* substitui o padding-left antigo da coluna */
+  overflow:hidden;       /* segura o ellipsis */
+}
+
+.name-led{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.16);
+  flex:0 0 auto;
+}
+
+.name-text{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
 
 /* weekend só no header e célula vazia */
 .day-header.weekend{

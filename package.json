@@ -1,0 +1,13 @@
+{
+    "name": "agendap83",
+    "private": true,
+    "scripts": {
+      "dev": "concurrently -n BACK,FRONT \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+      "build": "npm --prefix frontend run build",
+      "start": "npm --prefix backend run start"
+    },
+    "devDependencies": {
+      "concurrently": "^9.0.0"
+    }
+  }
+  

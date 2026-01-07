@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+function debugEnabled() {
+  try {
+    return localStorage.getItem("AGENDA_FUNC_DEBUG") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function dbg(...args) {
+  if (!debugEnabled()) return;
+  console.debug("[useFuncionarios]", ...args);
+}
+
 /**
  * Carrega funcionários e mantém:
  * - lista
@@ -16,8 +29,19 @@ export function useFuncionarios({ apiGet, backendOk, qDebounced }) {
     const q = String(qDebounced ?? "").trim();
     if (q) params.set("q", q);
 
-    const data = await apiGet(`/api/funcionarios?${params.toString()}`);
+    // ✅ sempre ativos (ajuste se quiser ver inativos)
+    params.set("ativo", "1");
+    // ✅ tenta pegar bastante (se o backend limitar, ele limita)
+    params.set("limit", "1000");
+
+    const url = `/api/funcionarios?${params.toString()}`;
+    dbg("loadFuncionarios()", { backendOk, q, url });
+
+    const data = await apiGet(url);
     const list = Array.isArray(data) ? data : [];
+
+    dbg("loadFuncionarios() result", { count: list.length });
+
     setFuncionarios(list);
 
     setFuncCache((prev) => {
@@ -37,11 +61,16 @@ export function useFuncionarios({ apiGet, backendOk, qDebounced }) {
     });
 
     return list;
-  }, [apiGet, qDebounced]);
+  }, [apiGet, qDebounced, backendOk]);
 
   useEffect(() => {
-    if (!backendOk) return;
-    loadFuncionarios().catch(() => {});
+    if (!backendOk) {
+      dbg("backendOk=false => skip load");
+      return;
+    }
+    loadFuncionarios().catch((e) => {
+      dbg("loadFuncionarios() FAIL", { message: e?.message ?? String(e) });
+    });
   }, [backendOk, loadFuncionarios]);
 
   const funcionariosByKey = useMemo(() => {
@@ -62,3 +91,6 @@ export function useFuncionarios({ apiGet, backendOk, qDebounced }) {
     funcionariosByKey,
   };
 }
+
+// ✅ compat: se algum lugar importar default sem chaves
+export default useFuncionarios;

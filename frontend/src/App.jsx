@@ -18,6 +18,14 @@ import "./Grid.css";
 import "./Cells.css";
 import "./CodeStyles.css";
 
+/**
+ * ✅ PrimeReact (Tree / Button / etc.)
+ * Importar aqui garante o estilo da árvore sem mexer em outros arquivos agora.
+ */
+import "primereact/resources/themes/lara-light-indigo/theme.css";
+import "primereact/resources/primereact.min.css";
+import "primeicons/primeicons.css";
+
 function norm(s) {
   return String(s ?? "")
     .normalize("NFD")
@@ -40,53 +48,62 @@ function filterEmployees(list, q) {
   });
 }
 
-
 export default function App() {
-  const GROUPS = [
-    "SUEIN", "SUMEC", "SUPROD", "SUEMB",
-    "COMAN", "COEMB", "COPROD",
-    "ADM", "ENGENHARIA",
-    "GERENTES",
-  ];
-  const GROUP_PLAN = useMemo(() => {
+  const GROUP_TREE = [
+    { id: "GERENTES", level: 0, tone: "slate" },
 
+    { id: "COPROD", level: 1, tone: "green-900" },
+    { id: "SUPROD", level: 2, tone: "green-700" },
+    { id: "TO_P", level: 3, tone: "green-200" },
+
+    { id: "COMAN", level: 1, tone: "blue-900" },
+    { id: "SUEIN", level: 2, tone: "blue-700" },
+    { id: "TMA", level: 3, tone: "blue-200" },
+    { id: "TMI", level: 3, tone: "blue-200" },
+    { id: "TME", level: 3, tone: "blue-200" },
+
+    { id: "SUMEC", level: 2, tone: "purple-700" },
+    { id: "TMM", level: 3, tone: "purple-200" },
+
+    { id: "COEMB", level: 1, tone: "orange-900" },
+    { id: "SUEMB", level: 2, tone: "orange-700" },
+    { id: "TLT", level: 3, tone: "orange-200" },
+    { id: "TO_E", level: 3, tone: "orange-200" },
+
+    { id: "ADM", level: 1, tone: "gray-700" },
+    { id: "ENGENHARIA", level: 1, tone: "gray-900" },
+  ];
+
+  const GROUP_PLAN = useMemo(() => {
     return (groupName) => {
+      // 👇 cargos-base (folhas)
+      if (["TO_P", "TLT", "TO_E", "TMM", "TMA", "TMI", "TME"].includes(groupName)) {
+        return { baseGroups: [], roleIncludes: [groupName] };
+      }
+
       // Supervisores: inclui eles mesmos + subordinados
       if (["SUEIN", "SUMEC", "SUPROD", "SUEMB"].includes(groupName)) {
         return {
-          baseGroups: [groupName],   // carrega supervisores + subordinados
-          roleIncludes: [],          // nada extra
+          baseGroups: [groupName],
+          roleIncludes: [],
         };
       }
 
-      // Coordenadores: inclui o coordenador + “tudo do(s) grupo(s) base”
-      if (groupName === "COMAN") {
-        return { baseGroups: ["SUEIN", "SUMEC"], roleIncludes: ["COMAN"] };
-      }
-      if (groupName === "COEMB") {
-        return { baseGroups: ["SUEMB"], roleIncludes: ["COEMB"] };
-      }
-      if (groupName === "COPROD") {
-        return { baseGroups: ["SUPROD"], roleIncludes: ["COPROD"] };
-      }
+      // Coordenadores: inclui coordenador + tudo do(s) grupo(s) base
+      if (groupName === "COMAN") return { baseGroups: ["SUEIN", "SUMEC"], roleIncludes: ["COMAN"] };
+      if (groupName === "COEMB") return { baseGroups: ["SUEMB"], roleIncludes: ["COEMB"] };
+      if (groupName === "COPROD") return { baseGroups: ["SUPROD"], roleIncludes: ["COPROD"] };
 
-      // Administrativo
-      if (groupName === "ADM") {
-        return { baseGroups: [], roleIncludes: ["ADM"] };
-      }
-      if (groupName === "ENGENHARIA") {
-        return { baseGroups: [], roleIncludes: ["ENG"] };
-      }
+      // Administrativo / Engenharia
+      if (groupName === "ADM") return { baseGroups: [], roleIncludes: ["ADM"] };
+      if (groupName === "ENGENHARIA") return { baseGroups: [], roleIncludes: ["ENG"] };
 
-      // Gerentes: um botão que traz GEPLAT + GEOP
-      if (groupName === "GERENTES") {
-        return { baseGroups: [], roleIncludes: ["GEPLAT", "GEOP"] };
-      }
+      // Gerentes
+      if (groupName === "GERENTES") return { baseGroups: [], roleIncludes: ["GEPLAT", "GEOP"] };
 
       return { baseGroups: [], roleIncludes: [] };
     };
   }, []);
-
 
   // ✅ preencha com seus supervisores (SQL: WHERE Funcao='...') — já coloquei SUEIN
   const FALLBACK_SUPERVISORS_BY_GROUP = {
@@ -96,23 +113,33 @@ export default function App() {
     SUEMB: [],
   };
 
-
   // ===== status/back-end =====
   const [status, setStatus] = useState("verificando...");
   const [backendOk, setBackendOk] = useState(false);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        await apiGet("/api/health"); // ✅ passa pelo resolveApiUrl (DEV vai pra 8311)
+        if (!alive) return;
         setBackendOk(true);
         setStatus("Backend conectado ✅");
-      })
-      .catch(() => {
+      } catch (e) {
+        if (!alive) return;
         setBackendOk(false);
         setStatus("Backend NÃO respondeu ❌");
-      });
+        // eslint-disable-next-line no-console
+        console.error("[health] fail:", e);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
+
 
   // ===== datas =====
   const today = useRef(isoToday());
@@ -147,15 +174,12 @@ export default function App() {
     groupPlan: GROUP_PLAN, // ✅ novo
   });
 
-
-
   // lista exibida no EmployeeList
   const listForSidebarBase = groupEmployees ?? funcionarios;
 
   const listForSidebar = useMemo(() => {
     return filterEmployees(listForSidebarBase, q);
   }, [listForSidebarBase, q]);
-
 
   // ===== seleção/grid =====
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
@@ -196,9 +220,7 @@ export default function App() {
 
   // ✅ ao trocar grupo: limpa seleção e busca; e o hook já limpa a lista imediatamente
   function handlePickGroup(g) {
-    clearSelection();
-    setQ("");
-    setSomenteSelecionados(false);
+    setQ(""); // opcional: limpar a busca ao trocar de grupo
     pickGroup(g);
   }
 
@@ -215,15 +237,14 @@ export default function App() {
       if (prev.col !== col) next = { col, dir: "asc" };
       else if (prev.dir === "asc") next = { col, dir: "desc" };
       else next = { col: null, dir: null };
-  
+
       if (next.col && next.dir) {
         setRowOrder((ro) => applySortToRowOrder(ro, next, gridKeys, funcionariosByKey));
       }
-  
+
       return next;
     });
   }
-  
 
   function clearSort() {
     setSort({ col: null, dir: null });
@@ -292,7 +313,6 @@ export default function App() {
     }
   }
 
-
   function repor() {
     setSelectedKeys(new Set());
     setGridKeys(new Set());
@@ -348,10 +368,9 @@ export default function App() {
     const base = rowOrder.length
       ? rowOrder.filter((k) => gridKeys.has(k))
       : gridKeyList;
-  
+
     return base;
   }, [rowOrder, gridKeys, gridKeyList]);
-  
 
   const visibleKeys = useMemo(() => {
     if (!somenteSelecionados) return orderedKeys;
@@ -429,10 +448,10 @@ export default function App() {
 
   function applySortToRowOrder(prevRowOrder, nextSort, gridKeys, funcionariosByKey) {
     if (!nextSort?.col || !nextSort?.dir) return prevRowOrder;
-  
+
     const dir = nextSort.dir === "desc" ? -1 : 1;
     const col = nextSort.col;
-  
+
     const getVal = (k) => {
       const f = funcionariosByKey.get(k) || {};
       if (col === "Chave") return String(k ?? "");
@@ -442,15 +461,15 @@ export default function App() {
       if (col === "Quant") return String(f.Quant ?? "");
       return "";
     };
-  
+
     // pega só os que estão no grid, preservando os demais
     const inGrid = prevRowOrder.filter((k) => gridKeys.has(k));
     const inGridSet = new Set(inGrid);
-  
+
     // se existir algum key no grid que não está no rowOrder ainda, inclui
     const missing = Array.from(gridKeys).filter((k) => !inGridSet.has(k));
     const base = [...inGrid, ...missing];
-  
+
     base.sort((a, b) => {
       const va = getVal(a).toLocaleUpperCase("pt-BR");
       const vb = getVal(b).toLocaleUpperCase("pt-BR");
@@ -458,11 +477,10 @@ export default function App() {
       if (va > vb) return 1 * dir;
       return 0;
     });
-  
+
     const rest = prevRowOrder.filter((k) => !gridKeys.has(k));
     return [...base, ...rest];
   }
-  
 
   function toggleCellDeleted(cellKey) {
     setDeletedCells((prev) => {
@@ -531,7 +549,15 @@ export default function App() {
             return loadFuncionarios().catch(() => setStatus("Falha ao carregar funcionários ❌"));
           }}
           onRepor={repor}
-          groups={GROUPS}
+
+          /**
+           * ✅ Compatibilidade: passa os dois nomes.
+           * - EmployeeList “novo” (PrimeReact) usa: groupTree
+           * - EmployeeList “antigo” pode usar: groups
+           */
+          groupTree={GROUP_TREE}
+          groups={GROUP_TREE}
+
           activeGroup={activeGroup}
           onPickGroup={handlePickGroup}
           groupLoading={groupLoading}

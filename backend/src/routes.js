@@ -198,25 +198,26 @@ router.get('/hierarquia', async (req, res) => {
    NEGÓCIO: Funcionários (LIST)
 ========================= */
 
-// GET /api/funcionarios?q=...&funcao=SUEIN&ativo=1&limit=200
+// GET /api/funcionarios?q=...&funcao=...&hierarquia=...&ativo=1&limit=200
 router.get("/funcionarios", async (req, res) => {
   try {
     const q = String(req.query.q ?? "").trim();
     const funcao = String(req.query.funcao ?? "").trim();
+    const hierarquia = String(req.query.hierarquia ?? "").trim();
     const ativoRaw = String(req.query.ativo ?? "").trim(); // "1" | "0" | ""
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 1000);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 200) || 200, 1), 5000);
 
     const pool = await getPool();
     const r = pool.request();
 
     r.input("top", sql.Int, limit);
 
-    // filtros opcionais
     const ativo =
       ativoRaw === "" ? null : (ativoRaw === "1" ? 1 : (ativoRaw === "0" ? 0 : null));
     r.input("ativo", sql.Bit, ativo);
 
-    r.input("funcao", sql.NVarChar(50), funcao || null);
+    r.input("funcao", sql.NVarChar(120), funcao || null);
+    r.input("hierarquia", sql.NVarChar(20), hierarquia || null);
 
     const qLike = q ? `%${q}%` : null;
     r.input("q", sql.NVarChar(200), q || null);
@@ -229,21 +230,21 @@ router.get("/funcionarios", async (req, res) => {
         Nome,
         Funcao,
         Ativo,
-        HierarquiaCodigoOriginal,
-        HierarquiaTipoSugerido,
-        HierarquiaObservacao,
         CriadoEm,
-        AtualizadoEm
+        AtualizadoEm,
+        Hierarquia
       FROM dbo.Funcionarios
       WHERE
         (@ativo IS NULL OR Ativo = @ativo)
         AND (@funcao IS NULL OR Funcao = @funcao)
+        AND (@hierarquia IS NULL OR Hierarquia = @hierarquia)
         AND (
           @q IS NULL
           OR Chave LIKE @qLike
           OR Matricula LIKE @qLike
           OR Nome LIKE @qLike
           OR Funcao LIKE @qLike
+          OR Hierarquia LIKE @qLike
         )
       ORDER BY Nome;
     `);
@@ -253,6 +254,8 @@ router.get("/funcionarios", async (req, res) => {
     res.status(500).json({ error: "FUNCIONARIOS_LIST", message: err.message });
   }
 });
+
+
 
 // GET /api/funcionarios/byKeys?chaves=FRCF,NVBN,...
 router.get("/funcionarios/byKeys", async (req, res) => {

@@ -11,7 +11,6 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
-  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -78,6 +77,61 @@ function buildCellTooltip({ rowKey, dateStr, code, obs }, codeStyles) {
 function parseCellKey(cellKey) {
   const [fk, iso] = String(cellKey || "").split("|");
   return { fk, iso };
+}
+
+/** ===== LED do Nome (por Função) ===== */
+function toneToHex(tone) {
+  const t = String(tone || "").trim();
+  const map = {
+    neutral: "#9ca3af",
+    slate: "#0f172a",
+    "blue-900": "#1e3a8a",
+    "blue-700": "#1d4ed8",
+    "blue-200": "#60a5fa",
+    "purple-700": "#6d28d9",
+    "purple-200": "#a78bfa",
+    "green-900": "#065f46",
+    "green-700": "#047857",
+    "green-200": "#34d399",
+    "orange-900": "#9a3412",
+    "orange-700": "#c2410c",
+    "orange-200": "#fb923c",
+    "gray-900": "#111827",
+    "gray-700": "#374151",
+  };
+  return map[t] || "#9ca3af";
+}
+
+function roleToTone(roleRaw) {
+  const r = String(roleRaw ?? "").trim().toUpperCase();
+
+  // Gerência
+  if (r === "GEPLAT" || r === "GEOP" || r === "GERENTES") return "slate";
+
+  // Produção
+  if (r === "COPROD") return "green-900";
+  if (r === "SUPROD") return "green-700";
+  if (r === "TO_P") return "green-200";
+
+  // Manutenção
+  if (r === "COMAN") return "blue-900";
+  if (r === "SUEIN") return "blue-700";
+  if (r === "TMA" || r === "TMI" || r === "TME") return "blue-200";
+
+  // Mecânica
+  if (r === "SUMEC") return "purple-700";
+  if (r === "TMM") return "purple-200";
+
+  // Embarque
+  if (r === "COEMB") return "orange-900";
+  if (r === "SUEMB") return "orange-700";
+  if (r === "TLT" || r === "TO_E") return "orange-200";
+
+  // Admin / Eng
+  if (r === "ADM") return "gray-700";
+  if (r === "ENG" || r === "ENGENHARIA") return "gray-900";
+
+  return "neutral";
 }
 
 const GridHeader = memo(function GridHeader({ headerInfo, sort, onSort }) {
@@ -162,6 +216,7 @@ const DayCell = memo(function DayCell({
   codigo,
   isDeleted,
   isSelected,
+  selectedCount,
   title,
   onToggleDelete,
   onCellClick,
@@ -219,6 +274,12 @@ const DayCell = memo(function DayCell({
 
         if (e.altKey) return onToggleDelete?.(cellKey);
 
+        const hasMods = e.shiftKey || e.ctrlKey || e.metaKey;
+        if (!hasMods && isSelected && Number(selectedCount || 0) === 1) {
+          // ✅ “clicar de novo” na mesma célula já selecionada abre edição
+          return onCellEditRequest?.(cellKey);
+        }
+
         onCellClick?.(cellKey, {
           shift: e.shiftKey,
           add: e.ctrlKey || e.metaKey,
@@ -247,7 +308,7 @@ function SortableRow({ id, children, onRemoveRow }) {
 
   const style = {
     transition,
-    transform: transform ? CSS.Transform.toString(transform) : undefined, // ✅ aplica sempre
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
     opacity: isDragging ? 0.9 : 1,
   };
 
@@ -262,7 +323,7 @@ function SortableRow({ id, children, onRemoveRow }) {
             {...attributes}
             onPointerDown={(e) => {
               dbg("[HANDLE pointerdown]", { row: id, button: e.button });
-              listeners?.onPointerDown?.(e); // ✅ ESSENCIAL (inicia o DnD)
+              listeners?.onPointerDown?.(e);
             }}
             onKeyDown={(e) => {
               listeners?.onKeyDown?.(e);
@@ -301,10 +362,6 @@ function SortableRow({ id, children, onRemoveRow }) {
     </tr>
   );
 }
-
-
-
-
 
 export default function ScheduleGrid({
   visibleKeys,
@@ -360,39 +417,34 @@ export default function ScheduleGrid({
     const from = String(fromKey ?? "");
     const to = String(toKey ?? "");
     if (!from || !to || from === to) return prevRowOrder;
-  
+
     const vis = (visibleKeys || []).map(String);
     const visSet = new Set(vis);
-  
-    // ordem visível atual baseada no rowOrder
+
     const currentVis = prevRowOrder.map(String).filter((k) => visSet.has(k));
     const currentSet = new Set(currentVis);
     for (const k of vis) if (!currentSet.has(k)) currentVis.push(k);
-  
+
     const fromIdx = currentVis.indexOf(from);
     const toIdx = currentVis.indexOf(to);
     if (fromIdx < 0 || toIdx < 0) return prevRowOrder;
-  
+
     const nextVis = currentVis.slice();
     nextVis.splice(fromIdx, 1);
     nextVis.splice(toIdx, 0, from);
-  
-    // reescreve o rowOrder preservando tudo fora do visível
+
     let i = 0;
     const next = prevRowOrder.map((k) => {
       const kk = String(k);
       if (visSet.has(kk)) return nextVis[i++];
       return k;
     });
-  
-    // garante que nenhum visível ficou de fora
+
     const nextSet = new Set(next.map(String));
     for (const k of nextVis) if (!nextSet.has(k)) next.push(k);
-  
+
     return next;
   }
-  
-  
 
   function handleCellClick(cellKey, meta) {
     dbg("[handleCellClick]", { cellKey, meta, anchorCell });
@@ -468,9 +520,9 @@ export default function ScheduleGrid({
     const { active, over } = evt;
     if (!over) return;
     if (active.id === over.id) return;
-  
+
     dbg("[DND dragEnd]", { from: active.id, to: over.id });
-  
+
     setRowOrder((prev) =>
       reorderRowOrderByVisible(prev, visibleKeys, active.id, over.id)
     );
@@ -483,8 +535,17 @@ export default function ScheduleGrid({
       const f = funcionariosByKey.get(k) || {};
       const funcao = String(f.Funcao ?? "").trim() || "—";
       const mat = String(f.Matricula ?? "").trim() || "—";
-      const nome = String(f.Nome ?? "").trim() || "—";
+      const nomeRaw = String(f.Nome ?? "").trim() || "—";
       const quant = String(f.Quant ?? "").trim() || "—";
+
+      const ledColor = toneToHex(roleToTone(funcao));
+
+      const nomeNode = (
+        <div className="name-cell" title={nomeRaw}>
+          <span className="name-led" style={{ background: ledColor }} />
+          <span className="name-text">{nomeRaw}</span>
+        </div>
+      );
 
       const cells = headerInfo.days.map((d) => {
         const cellKey = `${k}|${d.iso}`;
@@ -514,6 +575,7 @@ export default function ScheduleGrid({
             codigo={codigo}
             isDeleted={isDeleted}
             isSelected={isSelected}
+            selectedCount={selected.size}
             title={title}
             onToggleDelete={(ck) => toggleCellDeleted?.(ck)}
             onCellClick={handleCellClick}
@@ -523,15 +585,15 @@ export default function ScheduleGrid({
       });
 
       return (
-          <SortableRow key={k} id={k} onRemoveRow={onRemoveRow}>
-            {funcao}
-            {mat}
-            {nome}
-            {k}
-            {quant}
-            {cells}
-          </SortableRow>
-        );
+        <SortableRow key={k} id={k} onRemoveRow={onRemoveRow}>
+          {funcao}
+          {mat}
+          {nomeNode}
+          {k}
+          {quant}
+          {cells}
+        </SortableRow>
+      );
     });
   }, [
     visibleKeys,
@@ -558,7 +620,6 @@ export default function ScheduleGrid({
             onDragStart={(evt) => {
               dbg("[DND dragStart]", { id: evt.active?.id });
             }}
-            
             onDragCancel={() => dbg("[DND dragCancel]")}
             onDragEnd={onDragEndRow}
           >
