@@ -195,9 +195,8 @@ const GridHeader = memo(function GridHeader({ headerInfo, sort, onSort }) {
         {headerInfo.days.map((d) => (
           <th
             key={d.iso}
-            className={`day-header ${d.isWeekend ? "weekend" : ""} ${
-              d.isMonthStart ? "month-start" : ""
-            }`}
+            className={`day-header ${d.isWeekend ? "weekend" : ""} ${d.isMonthStart ? "month-start" : ""
+              }`}
             title={d.iso}
           >
             {d.day}
@@ -472,13 +471,75 @@ export default function ScheduleGrid({
     setCellEditorOpen(true);
   }
 
-  async function applyCells({ codigo, observacao }) {
-    const keys = Array.from(selectedCells);
-    dbg("[applyCells] start", { count: keys.length, codigo, observacao });
+  const selectedEmployeesCount = useMemo(() => {
+    const s = new Set();
+    for (const ck of selectedCells) {
+      const { fk } = parseCellKey(ck);
+      if (fk) s.add(fk);
+    }
+    // fallback: se só clicou 1 célula e por algum motivo set vazio
+    if (!s.size && anchorCell) {
+      const { fk } = parseCellKey(anchorCell);
+      if (fk) s.add(fk);
+    }
+    return s.size;
+  }, [selectedCells, anchorCell]);
+
+
+  function toDateUTC(iso) {
+    return new Date(`${iso}T00:00:00Z`);
+  }
+  function fmtISO(d) {
+    return d.toISOString().slice(0, 10);
+  }
+  function isWeekdayUTC(d) {
+    const wd = d.getUTCDay(); // 0 dom .. 6 sáb
+    return wd !== 0 && wd !== 6;
+  }
+
+  async function applyCells({ codigo, observacao, period }) {
+    // funcionários alvo = fks presentes nas células selecionadas (multi-row já funciona via Ctrl+Clique)
+    const fks = new Set();
+    for (const ck of selectedCells) {
+      const { fk } = parseCellKey(ck);
+      if (fk) fks.add(fk);
+    }
+    if (!fks.size && anchorCell) {
+      const { fk } = parseCellKey(anchorCell);
+      if (fk) fks.add(fk);
+    }
+
+    if (!fks.size) return;
+
+    let keys = Array.from(selectedCells);
+
+    // ✅ modo período
+    if (period?.inicio && period?.fim) {
+      let a = String(period.inicio);
+      let b = String(period.fim);
+      if (a > b) [a, b] = [b, a];
+
+      const da = toDateUTC(a);
+      const db = toDateUTC(b);
+
+      const dateList = [];
+      for (let d = new Date(da); d <= db; d.setUTCDate(d.getUTCDate() + 1)) {
+        if (period?.somenteUteis && !isWeekdayUTC(d)) continue;
+        dateList.push(fmtISO(d));
+      }
+
+      // monta keys do período (para cada funcionário)
+      const nextKeys = [];
+      for (const fk of fks) {
+        for (const iso of dateList) nextKeys.push(`${fk}|${iso}`);
+      }
+      keys = nextKeys;
+    }
 
     if (!keys.length) return;
 
-    const items = keys.map((ck) => {
+    // monta itens
+    const allItems = keys.map((ck) => {
       const { fk, iso } = parseCellKey(ck);
       return {
         FuncionarioChave: fk,
@@ -489,11 +550,17 @@ export default function ScheduleGrid({
       };
     });
 
-    await apiPost("/api/agenda/dia", { items });
+    // manda em chunks (pra não estourar limite do backend)
+    const CHUNK = 1000;
+    for (let i = 0; i < allItems.length; i += CHUNK) {
+      const slice = allItems.slice(i, i + CHUNK);
+      await apiPost("/api/agenda/dia", { items: slice });
+    }
 
+    // atualiza mapa local (1 vez)
     setAgendaMap((prev) => {
       const next = new Map(prev);
-      for (const it of items) {
+      for (const it of allItems) {
         const k = `${it.FuncionarioChave}|${it.Data}`;
         next.set(k, {
           FuncionarioChave: it.FuncionarioChave,
@@ -508,9 +575,8 @@ export default function ScheduleGrid({
 
     setSelectedCells(new Set());
     setCellEditorOpen(false);
-
-    dbg("[applyCells] done");
   }
+
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -636,6 +702,9 @@ export default function ScheduleGrid({
       <CellEditorModal
         open={cellEditorOpen}
         selectedCount={selectedCells.size}
+        selectedEmployeesCount={selectedEmployeesCount}
+        periodDefaultInicio={headerInfo?.days?.[0]?.iso || ""}
+        periodDefaultFim={headerInfo?.days?.[headerInfo.days.length - 1]?.iso || ""}
         legenda={legenda}
         onClose={() => setCellEditorOpen(false)}
         onApply={applyCells}

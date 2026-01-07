@@ -140,6 +140,19 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!backendOk) return;
+  
+    (async () => {
+      try {
+        const all = await apiGet("/api/legenda?ativo=1");
+        setLegendaAll(Array.isArray(all) ? all : []);
+      } catch (e) {
+        console.error("Falha ao carregar legenda completa:", e);
+        setLegendaAll([]); // mantém fallback
+      }
+    })();
+  }, [backendOk]);
 
   // ===== datas =====
   const today = useRef(isoToday());
@@ -227,6 +240,7 @@ export default function App() {
   // ===== agenda =====
   const [rawCalendar, setRawCalendar] = useState([]);
   const [legenda, setLegenda] = useState([]);
+  const [legendaAll, setLegendaAll] = useState([]);
   const [agendaMap, setAgendaMap] = useState(() => new Map());
   const [deletedCells, setDeletedCells] = useState(() => new Set());
 
@@ -624,7 +638,7 @@ export default function App() {
             onSort={cycleSort}
             onExitSort={clearSort}
             codeStyles={codeStyles}
-            legenda={legenda}
+            legenda={(legendaAll && legendaAll.length) ? legendaAll : legenda}
             apiPost={apiPost}
             setAgendaMap={setAgendaMap}
           />

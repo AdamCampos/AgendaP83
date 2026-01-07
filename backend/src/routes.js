@@ -6,11 +6,6 @@ const { sql, getPool } = require("./db");
    Helpers
 ========================= */
 
-// Função para garantir que o valor seja um identificador seguro (apenas letras, números e underline)
-function safeIdent(s) {
-  return /^[A-Za-z0-9_]+$/.test(s);
-}
-
 // Função para garantir que a data esteja no formato ISO ou retornar um valor default
 function parseISODateOrDefault(v, fallback) {
   const s = String(v || "").trim();
@@ -168,7 +163,6 @@ async function getSubordinadosCompletos(funcionarioChave) {
   return todosSubordinados;
 }
 
-
 // Rota para retornar a hierarquia com debug
 router.get('/hierarquia', async (req, res) => {
   try {
@@ -255,8 +249,6 @@ router.get("/funcionarios", async (req, res) => {
   }
 });
 
-
-
 // GET /api/funcionarios/byKeys?chaves=FRCF,NVBN,...
 router.get("/funcionarios/byKeys", async (req, res) => {
   try {
@@ -288,7 +280,6 @@ router.get("/funcionarios/byKeys", async (req, res) => {
     res.status(500).json({ error: "FUNCIONARIOS_BY_KEYS", message: err.message });
   }
 });
-
 
 /* =========================
    NEGÓCIO: AgendaDia (CRUD)
@@ -365,6 +356,131 @@ router.get("/agenda", async (req, res) => {
     res.status(500).json({ error: "AGENDA_GET", message: err.message });
   }
 });
+
+// GET /api/legenda?ativo=1
+router.get("/legenda", async (req, res) => {
+  try {
+    const ativoRaw = String(req.query.ativo ?? "").trim(); // "1" | "0" | ""
+    const ativo = ativoRaw === "" ? null : (ativoRaw === "1" ? 1 : (ativoRaw === "0" ? 0 : null));
+
+    const pool = await getPool();
+    const r = pool.request();
+    r.input("ativo", sql.Bit, ativo);
+
+    const rs = await r.query(`
+      SELECT
+        Codigo,
+        Descricao,
+        Tipo,
+        Icone,
+        Ordem,
+        Ativo
+      FROM dbo.Legenda
+      WHERE (@ativo IS NULL OR Ativo = @ativo)
+      ORDER BY
+        COALESCE(Ordem, 999999),
+        Codigo
+    `);
+
+    res.json(rs.recordset || []);
+  } catch (err) {
+    console.error("Erro /api/legenda:", err);
+    res.status(500).json({ error: "LEGENDA_GET", message: err.message });
+  }
+});
+
+/**
+ * POST /api/agenda/dia
+ * Body: { items: [{ FuncionarioChave, Data, Codigo, Fonte, Observacao }] }
+ *
+ * Regras:
+ * - UPSERT por (FuncionarioChave, Data)
+ * - Se Codigo vier vazio/null => DELETE (limpa célula)
+ */
+router.post("/agenda/dia", async (req, res) => {
+  try {
+    const itemsRaw = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!itemsRaw.length) return res.json({ ok: true, affected: 0 });
+
+    if (itemsRaw.length > 2000) {
+      return res.status(400).json({ error: "LIMIT", message: "Máximo 2000 itens por requisição." });
+    }
+
+    const items = [];
+    for (const it of itemsRaw) {
+      const fk = String(it?.FuncionarioChave ?? "").trim();
+      const dt = String(it?.Data ?? "").trim(); // YYYY-MM-DD
+      const codigo = String(it?.Codigo ?? "").trim();
+      const fonte = String(it?.Fonte ?? "USUARIO").trim();
+      const obs = it?.Observacao == null ? "" : String(it.Observacao);
+
+      if (!fk || fk.length !== 4) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) continue;
+
+      items.push({
+        FuncionarioChave: fk,
+        Data: dt,
+        Codigo: codigo, // pode ser ""
+        Fonte: fonte.slice(0, 30),
+        Observacao: obs.slice(0, 2000),
+      });
+    }
+
+    if (!items.length) return res.json({ ok: true, affected: 0 });
+
+    const pool = await getPool();
+    const tx = new sql.Transaction(pool);
+
+    await tx.begin();
+
+    let affected = 0;
+
+    for (const it of items) {
+      // request novo por item (evita acumular inputs)
+      const r = new sql.Request(tx);
+      r.input("FuncionarioChave", sql.Char(4), it.FuncionarioChave);
+      r.input("Data", sql.Date, it.Data);
+      r.input("Codigo", sql.NVarChar(20), it.Codigo || null);
+      r.input("Fonte", sql.NVarChar(30), it.Fonte || "USUARIO");
+      r.input("Observacao", sql.NVarChar(2000), it.Observacao || null);
+
+      if (!it.Codigo) {
+        const rs = await r.query(`
+          DELETE FROM dbo.AgendaDia
+          WHERE FuncionarioChave = @FuncionarioChave
+            AND [Data] = @Data
+        `);
+        affected += (rs?.rowsAffected?.[0] ?? 0);
+      } else {
+        const rs = await r.query(`
+          MERGE dbo.AgendaDia AS tgt
+          USING (SELECT @FuncionarioChave AS FuncionarioChave, @Data AS [Data]) AS s
+            ON s.FuncionarioChave = tgt.FuncionarioChave
+           AND s.[Data] = tgt.[Data]
+          WHEN MATCHED THEN
+            UPDATE SET
+              Codigo = @Codigo,
+              Fonte = @Fonte,
+              Observacao = @Observacao
+          WHEN NOT MATCHED THEN
+            INSERT (FuncionarioChave, [Data], Codigo, Fonte, Observacao)
+            VALUES (@FuncionarioChave, @Data, @Codigo, @Fonte, @Observacao);
+        `);
+
+        // MERGE costuma retornar 1 em rowsAffected[0], mas varia; soma todos por segurança
+        affected += (rs?.rowsAffected || []).reduce((a, b) => a + (b || 0), 0);
+      }
+    }
+
+    await tx.commit();
+    return res.json({ ok: true, affected });
+  } catch (err) {
+    console.error("Erro POST /api/agenda/dia:", err);
+    try { /* rollback best-effort */ } catch {}
+    return res.status(500).json({ error: "AGENDA_DIA_POST", message: err.message });
+  }
+});
+
 
 
 module.exports = router;
